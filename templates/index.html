@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email AI Agent - Tự động hóa Email thông minh</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <span>Email AI Agent</span>
+            </div>
+        </div>
+        
+        <nav class="sidebar-nav">
+            <a href="#" class="nav-item active" data-page="compose">
+                <i class="fas fa-pen-to-square"></i>
+                <span>Soạn Email</span>
+            </a>
+            <a href="#" class="nav-item" data-page="inbox">
+                <i class="fas fa-inbox"></i>
+                <span>Email đã gửi</span>
+                <span class="badge" id="pending-count">0</span>
+            </a>
+            <a href="#" class="nav-item" data-page="cv">
+                <i class="fas fa-file-user"></i>
+                <span>Đánh giá CV</span>
+                <span class="badge cv-badge" id="qualified-count" style="background: var(--success-color);">0</span>
+            </a>
+            <a href="#" class="nav-item" data-page="monitor">
+                <i class="fas fa-satellite-dish"></i>
+                <span>Giám sát</span>
+            </a>
+            <a href="#" class="nav-item" data-page="settings">
+                <i class="fas fa-cog"></i>
+                <span>Cài đặt</span>
+            </a>
+        </nav>
+        
+        <div class="sidebar-footer">
+            <div class="monitor-status" id="monitor-status">
+                <span class="status-dot"></span>
+                <span class="status-text">Đang dừng</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-title">
+                <h1 id="page-title">Soạn Email Mới</h1>
+                <p id="page-subtitle">Sử dụng AI để tạo email chuyên nghiệp</p>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-icon" id="refresh-btn" title="Làm mới">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button class="btn btn-icon" id="notification-btn" title="Thông báo">
+                    <i class="fas fa-bell"></i>
+                    <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Page Content -->
+        <div class="content">
+            <!-- Compose Page -->
+            <section class="page active" id="page-compose">
+                <div class="compose-container">
+                    <div class="compose-form-section">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-user"></i> Thông tin người gửi</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="sender-name">Tên của bạn <span class="required">*</span></label>
+                                    <input type="text" id="sender-name" placeholder="Nhập tên của bạn" required>
+                                </div>
+                                <div class="form-group">
+                                    <label for="notification-email">Email nhận thông báo</label>
+                                    <input type="email" id="notification-email" placeholder="Email để nhận thông báo phản hồi (mặc định: email gửi)">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-user-plus"></i> Thông tin người nhận</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="recipient-name">Tên người nhận <span class="required">*</span></label>
+                                        <input type="text" id="recipient-name" placeholder="Nhập tên người nhận" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="recipient-email">Email người nhận <span class="required">*</span></label>
+                                        <input type="email" id="recipient-email" placeholder="example@email.com" required>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-envelope-open-text"></i> Nội dung Email</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-group">
+                                    <label for="email-purpose">Mục đích email <span class="required">*</span></label>
+                                    <textarea id="email-purpose" rows="3" placeholder="Mô tả chi tiết mục đích của email. VD: Mời họp thảo luận dự án X vào thứ 6 tuần này..." required></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label for="email-tone">Giọng điệu</label>
+                                    <div class="tone-selector">
+                                        <label class="tone-option">
+                                            <input type="radio" name="tone" value="professional" checked>
+                                            <span class="tone-card">
+                                                <i class="fas fa-briefcase"></i>
+                                                <span>Chuyên nghiệp</span>
+                                            </span>
+                                        </label>
+                                        <label class="tone-option">
+                                            <input type="radio" name="tone" value="friendly">
+                                            <span class="tone-card">
+                                                <i class="fas fa-smile"></i>
+                                                <span>Thân thiện</span>
+                                            </span>
+                                        </label>
+                                        <label class="tone-option">
+                                            <input type="radio" name="tone" value="formal">
+                                            <span class="tone-card">
+                                                <i class="fas fa-user-tie"></i>
+                                                <span>Trang trọng</span>
+                                            </span>
+                                        </label>
+                                        <label class="tone-option">
+                                            <input type="radio" name="tone" value="casual">
+                                            <span class="tone-card">
+                                                <i class="fas fa-coffee"></i>
+                                                <span>Thường ngày</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="additional-context">Thông tin bổ sung</label>
+                                    <textarea id="additional-context" rows="2" placeholder="Thêm bất kỳ thông tin nào có thể hữu ích cho AI..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="btn btn-secondary" id="preview-btn">
+                                <i class="fas fa-eye"></i> Xem trước
+                            </button>
+                            <button type="button" class="btn btn-primary" id="send-btn">
+                                <i class="fas fa-paper-plane"></i> Gửi Email
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="preview-section" id="preview-section">
+                        <div class="card preview-card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-file-alt"></i> Xem trước Email</h2>
+                                <button class="btn btn-icon btn-sm" id="close-preview">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="preview-loading" id="preview-loading">
+                                    <div class="spinner"></div>
+                                    <p>AI đang soạn email...</p>
+                                </div>
+                                <div class="preview-content" id="preview-content" style="display: none;">
+                                    <div class="preview-subject">
+                                        <label>Tiêu đề:</label>
+                                        <p id="preview-subject-text"></p>
+                                    </div>
+                                    <div class="preview-body">
+                                        <label>Nội dung:</label>
+                                        <div id="preview-body-text"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Inbox Page -->
+            <section class="page" id="page-inbox">
+                <div class="inbox-container">
+                    <div class="inbox-toolbar">
+                        <div class="search-box">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="search-emails" placeholder="Tìm kiếm email...">
+                        </div>
+                        <div class="filter-buttons">
+                            <button class="btn btn-filter active" data-filter="all">Tất cả</button>
+                            <button class="btn btn-filter" data-filter="pending">Chờ phản hồi</button>
+                            <button class="btn btn-filter" data-filter="responded">Đã phản hồi</button>
+                        </div>
+                    </div>
+
+                    <div class="email-list" id="email-list">
+                        <!-- Email items will be inserted here -->
+                        <div class="empty-state" id="empty-state">
+                            <i class="fas fa-inbox"></i>
+                            <h3>Chưa có email nào</h3>
+                            <p>Bắt đầu bằng cách soạn một email mới</p>
+                            <button class="btn btn-primary" onclick="navigateTo('compose')">
+                                <i class="fas fa-pen"></i> Soạn Email
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Monitor Page -->
+            <section class="page" id="page-monitor">
+                <div class="monitor-container">
+                    <!-- IMAP Status Card -->
+                    <div class="card" id="imap-status-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-plug"></i> Trạng thái kết nối IMAP</h2>
+                            <button class="btn btn-sm btn-secondary" id="check-imap-btn">
+                                <i class="fas fa-sync-alt"></i> Kiểm tra
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="imap-status" id="imap-status">
+                                <div class="imap-status-icon pending">
+                                    <i class="fas fa-question-circle"></i>
+                                </div>
+                                <div class="imap-status-text">
+                                    <h4>Chưa kiểm tra</h4>
+                                    <p>Nhấn "Kiểm tra" để kiểm tra kết nối IMAP</p>
+                                </div>
+                            </div>
+                            <div class="imap-help" style="margin-top: 16px; padding: 16px; background: #fef3c7; border-radius: 8px;">
+                                <p style="margin: 0; font-size: 0.875rem; color: #92400e;">
+                                    <i class="fas fa-lightbulb"></i> <strong>Lưu ý:</strong> Nếu IMAP không hoạt động, bạn vẫn có thể sử dụng tính năng <strong>"Nhập phản hồi thủ công"</strong> trong chi tiết email để test hệ thống.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Realtime Status Card -->
+                    <div class="card realtime-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-bolt"></i> Kết nối Realtime</h2>
+                            <div class="ws-status disconnected" id="ws-status">
+                                <i class="fas fa-wifi"></i> Đang kết nối...
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="realtime-info">
+                                <p><i class="fas fa-info-circle"></i> WebSocket cho phép nhận thông báo ngay lập tức khi có phản hồi mới, không cần chờ đợi.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card monitor-control-card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-satellite-dish"></i> Điều khiển giám sát</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="monitor-info">
+                                <div class="monitor-status-large" id="monitor-status-large">
+                                    <div class="status-icon stopped">
+                                        <i class="fas fa-stop-circle"></i>
+                                    </div>
+                                    <div class="status-details">
+                                        <h3>Trạng thái: <span id="status-text-large">Đã dừng</span></h3>
+                                        <p>Hệ thống sẽ tự động kiểm tra phản hồi email mỗi 10 giây và gửi thông báo realtime</p>
+                                    </div>
+                                </div>
+                                <div class="monitor-actions">
+                                    <button class="btn btn-success btn-lg" id="start-monitor-btn">
+                                        <i class="fas fa-play"></i> Bắt đầu giám sát
+                                    </button>
+                                    <button class="btn btn-danger btn-lg" id="stop-monitor-btn" style="display: none;">
+                                        <i class="fas fa-stop"></i> Dừng giám sát
+                                    </button>
+                                    <button class="btn btn-primary btn-lg" id="check-once-btn">
+                                        <i class="fas fa-bolt"></i> Kiểm tra ngay
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-history"></i> Lịch sử hoạt động</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="activity-log" id="activity-log">
+                                <div class="log-empty">
+                                    <i class="fas fa-clipboard-list"></i>
+                                    <p>Chưa có hoạt động nào</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CV Evaluation Page -->
+            <section class="page" id="page-cv">
+                <div class="cv-container">
+                    <!-- CV Evaluation Form -->
+                    <div class="cv-form-section">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-file-upload"></i> Đánh giá CV ứng viên</h2>
+                            </div>
+                            <div class="card-body">
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="cv-candidate-name">Tên ứng viên <span class="required">*</span></label>
+                                        <input type="text" id="cv-candidate-name" placeholder="Nguyễn Văn A" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="cv-candidate-email">Email ứng viên <span class="required">*</span></label>
+                                        <input type="email" id="cv-candidate-email" placeholder="ungvien@email.com" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="cv-job-title">Vị trí tuyển dụng <span class="required">*</span></label>
+                                        <input type="text" id="cv-job-title" placeholder="Senior Software Engineer" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="cv-company-name">Tên công ty</label>
+                                        <input type="text" id="cv-company-name" placeholder="Công ty ABC">
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="cv-job-requirements">Yêu cầu công việc <span class="required">*</span></label>
+                                    <textarea id="cv-job-requirements" rows="4" placeholder="- 3+ năm kinh nghiệm Python/JavaScript&#10;- Hiểu biết về microservices, Docker, Kubernetes&#10;- Kỹ năng giao tiếp tốt..." required></textarea>
+                                </div>
+                                
+                                <!-- CV Upload Section -->
+                                <div class="form-group">
+                                    <label>Upload file CV</label>
+                                    <div class="cv-upload-area" id="cv-upload-area">
+                                        <input type="file" id="cv-file-input" accept=".pdf,.docx,.doc,.txt" hidden>
+                                        <div class="upload-placeholder" id="upload-placeholder">
+                                            <i class="fas fa-cloud-upload-alt"></i>
+                                            <p>Kéo thả file CV vào đây hoặc <span class="upload-link">chọn file</span></p>
+                                            <span class="upload-hint">Hỗ trợ: PDF, DOCX, DOC, TXT (tối đa 5MB)</span>
+                                        </div>
+                                        <div class="upload-progress" id="upload-progress" style="display: none;">
+                                            <div class="progress-bar">
+                                                <div class="progress-fill" id="progress-fill"></div>
+                                            </div>
+                                            <span class="progress-text" id="progress-text">Đang xử lý...</span>
+                                        </div>
+                                        <div class="upload-success" id="upload-success" style="display: none;">
+                                            <i class="fas fa-check-circle"></i>
+                                            <span class="file-name" id="uploaded-file-name"></span>
+                                            <button type="button" class="btn btn-sm btn-icon" id="remove-file-btn" title="Xóa file">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="cv-content">Hoặc dán nội dung CV <span class="text-muted">(nếu không upload file)</span></label>
+                                    <textarea id="cv-content" rows="8" placeholder="Dán nội dung CV của ứng viên vào đây..."></textarea>
+                                </div>
+                                
+                                <div class="form-actions">
+                                    <button type="button" class="btn btn-secondary" id="clear-cv-btn">
+                                        <i class="fas fa-eraser"></i> Xóa form
+                                    </button>
+                                    <button type="button" class="btn btn-primary" id="evaluate-cv-btn">
+                                        <i class="fas fa-brain"></i> Đánh giá CV
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- CV Evaluation Results -->
+                    <div class="cv-results-section">
+                        <div class="card">
+                            <div class="card-header">
+                                <h2><i class="fas fa-chart-bar"></i> Kết quả đánh giá</h2>
+                                <button class="btn btn-sm btn-secondary" id="refresh-cv-btn">
+                                    <i class="fas fa-sync-alt"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="cv-stats">
+                                    <div class="stat-card total">
+                                        <i class="fas fa-file-alt"></i>
+                                        <div class="stat-info">
+                                            <span class="stat-value" id="total-cv-count">0</span>
+                                            <span class="stat-label">Tổng CV</span>
+                                        </div>
+                                    </div>
+                                    <div class="stat-card qualified">
+                                        <i class="fas fa-check-circle"></i>
+                                        <div class="stat-info">
+                                            <span class="stat-value" id="qualified-cv-count">0</span>
+                                            <span class="stat-label">Đạt yêu cầu (≥85%)</span>
+                                        </div>
+                                    </div>
+                                    <div class="stat-card emailed">
+                                        <i class="fas fa-envelope"></i>
+                                        <div class="stat-info">
+                                            <span class="stat-value" id="emailed-cv-count">0</span>
+                                            <span class="stat-label">Đã gửi mail</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="cv-list" id="cv-list">
+                                    <div class="empty-state" id="cv-empty-state">
+                                        <i class="fas fa-file-user"></i>
+                                        <h3>Chưa có CV nào</h3>
+                                        <p>Bắt đầu bằng cách đánh giá một CV</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Settings Page -->
+            <section class="page" id="page-settings">
+                <div class="settings-container">
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-info-circle"></i> Thông tin hệ thống</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="settings-info">
+                                <div class="info-item">
+                                    <i class="fas fa-envelope"></i>
+                                    <div>
+                                        <label>Email gửi:</label>
+                                        <p id="sender-email-display">Đang tải...</p>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-brain"></i>
+                                    <div>
+                                        <label>AI Model:</label>
+                                        <p>Azure OpenAI</p>
+                                    </div>
+                                </div>
+                                <div class="info-item">
+                                    <i class="fas fa-clock"></i>
+                                    <div>
+                                        <label>Chu kỳ kiểm tra:</label>
+                                        <p>10 giây (Realtime)</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-book"></i> Hướng dẫn sử dụng</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="guide-steps">
+                                <div class="guide-step">
+                                    <div class="step-number">1</div>
+                                    <div class="step-content">
+                                        <h4>Soạn Email</h4>
+                                        <p>Nhập thông tin người gửi, người nhận và mô tả mục đích email. AI sẽ tự động soạn nội dung phù hợp.</p>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="step-number">2</div>
+                                    <div class="step-content">
+                                        <h4>Xem trước & Gửi</h4>
+                                        <p>Xem trước nội dung email do AI tạo, sau đó gửi đến người nhận.</p>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="step-number">3</div>
+                                    <div class="step-content">
+                                        <h4>Đánh giá CV</h4>
+                                        <p>Upload file CV (PDF, DOCX, TXT) hoặc dán nội dung. AI sẽ đánh giá và tự động gửi thư mời nếu đạt ≥85%.</p>
+                                    </div>
+                                </div>
+                                <div class="guide-step">
+                                    <div class="step-number">4</div>
+                                    <div class="step-content">
+                                        <h4>Giám sát Realtime</h4>
+                                        <p>Hệ thống giám sát phản hồi realtime qua WebSocket, thông báo ngay khi có email mới.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Email Detail Modal -->
+    <div class="modal" id="email-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-envelope-open"></i> Chi tiết Email</h2>
+                <button class="btn btn-icon" id="close-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Email details will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="manual-response-btn">
+                    <i class="fas fa-reply"></i> Nhập phản hồi thủ công
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Response Modal -->
+    <div class="modal" id="response-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-reply"></i> Nhập phản hồi thủ công</h2>
+                <button class="btn btn-icon close-response-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Tiêu đề phản hồi</label>
+                    <input type="text" id="response-subject" placeholder="Re: ...">
+                </div>
+                <div class="form-group">
+                    <label>Nội dung phản hồi</label>
+                    <textarea id="response-text" rows="6" placeholder="Nhập nội dung phản hồi từ người nhận..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-response-modal">Hủy</button>
+                <button class="btn btn-primary" id="analyze-response-btn">
+                    <i class="fas fa-brain"></i> Phân tích
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CV Evaluation Result Modal -->
+    <div class="modal" id="cv-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2><i class="fas fa-file-user"></i> Chi tiết đánh giá CV</h2>
+                <button class="btn btn-icon" id="close-cv-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="cv-modal-body">
+                <!-- CV details will be inserted here -->
+            </div>
+            <div class="modal-footer" id="cv-modal-footer">
+                <!-- Action buttons will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- CV Email Preview Modal -->
+    <div class="modal" id="cv-email-preview-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2><i class="fas fa-envelope-open"></i> Xem trước email mời phỏng vấn</h2>
+                <button class="btn btn-icon close-cv-preview">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="cv-email-preview-body">
+                <div class="preview-loading" id="cv-email-loading">
+                    <div class="spinner"></div>
+                    <p>AI đang soạn email...</p>
+                </div>
+                <div id="cv-email-content" style="display: none;">
+                    <div class="email-preview-item">
+                        <label>Tiêu đề:</label>
+                        <p id="cv-email-subject"></p>
+                    </div>
+                    <div class="email-preview-item">
+                        <label>Nội dung:</label>
+                        <div id="cv-email-body" class="email-preview-body"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-cv-preview">Hủy</button>
+                <button class="btn btn-primary" id="confirm-send-cv-email">
+                    <i class="fas fa-paper-plane"></i> Gửi Email
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
