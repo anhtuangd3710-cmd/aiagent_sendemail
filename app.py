@@ -1,19 +1,21 @@
 """
 Email AI Agent - Flask Web Application
 Modern UI for email automation with Azure OpenAI or Google Gemini
-With Realtime WebSocket support
+With Realtime WebSocket support, Authentication, and Auto-start Monitor
 """
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, make_response
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import json
 import threading
 import queue
+import atexit
 from datetime import datetime
 
 from services.email_service import EmailService
 from services.database import DatabaseService
 from services.email_monitor import EmailMonitor, ManualResponseProcessor
+from services.auth_service import AuthService, login_required, admin_required
 from config.settings import SENDER_EMAIL, AI_PROVIDER
 
 # Import AI services based on provider
@@ -27,7 +29,8 @@ else:
     print("🤖 Using Azure OpenAI")
 
 app = Flask(__name__)
-CORS(app)
+app.secret_key = 'email-agent-secret-key-change-in-production'
+CORS(app, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Initialize services
@@ -35,12 +38,17 @@ email_service = EmailService()
 ai_agent = AIAgent()
 database = DatabaseService()
 cv_evaluator = CVEvaluator()
+auth_service = AuthService(database)
+
+# Store auth_service in app config for decorators
+app.config['auth_service'] = auth_service
 
 # Event queue for real-time updates (kept for backward compatibility)
 event_queue = queue.Queue()
 
-# Monitor instance
+# Monitor instance - will be auto-started
 monitor = None
+monitor_auto_started = False
 
 # Connected clients count
 connected_clients = 0
@@ -78,13 +86,58 @@ def cv_notification_callback(cv_evaluation, email_sent=False):
     socketio.emit('cv_evaluated', event_data)
 
 
+def auto_start_monitor():
+    """Auto-start the email monitor on application startup"""
+    global monitor, monitor_auto_started
+    
+    if monitor_auto_started:
+        return
+    
+    try:
+        monitor = EmailMonitor(
+            email_service,
+            ai_agent,
+            database,
+            notification_callback=notification_callback
+        )
+        monitor.start()
+        monitor_auto_started = True
+        print("✅ Email monitor auto-started successfully")
+    except Exception as e:
+        print(f"⚠️ Failed to auto-start monitor: {e}")
+
+
+def stop_monitor_on_exit():
+    """Stop monitor when application exits"""
+    global monitor
+    if monitor:
+        try:
+            monitor.stop()
+            print("Monitor stopped on exit")
+        except:
+            pass
+
+
+# Register cleanup
+atexit.register(stop_monitor_on_exit)
+
+
 # WebSocket Events
 @socketio.on('connect')
 def handle_connect():
     """Handle client connection"""
     global connected_clients
     connected_clients += 1
-    emit('connected', {'status': 'connected', 'clients': connected_clients})
+    
+    # Auto-start monitor on first client connection
+    if not monitor_auto_started:
+        auto_start_monitor()
+    
+    emit('connected', {
+        'status': 'connected', 
+        'clients': connected_clients,
+        'monitor_running': monitor is not None and monitor._running if monitor else False
+    })
     print(f"Client connected. Total clients: {connected_clients}")
 
 
@@ -112,11 +165,164 @@ def handle_check_responses():
         emit('check_complete', {'success': False, 'error': str(e)})
 
 
-# Routes
+# ==================== Authentication Routes ====================
+
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    """Register a new user"""
+    try:
+        data = request.json
+        result = auth_service.register(
+            username=data.get('username'),
+            email=data.get('email'),
+            password=data.get('password'),
+            full_name=data.get('full_name')
+        )
+        
+        if result['success']:
+            return jsonify(result), 201
+        return jsonify(result), 400
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    """Login user"""
+    try:
+        data = request.json
+        ip_address = request.remote_addr
+        user_agent = request.headers.get('User-Agent')
+        
+        result = auth_service.login(
+            username_or_email=data.get('username') or data.get('email'),
+            password=data.get('password'),
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        
+        if result['success']:
+            response = make_response(jsonify(result))
+            # Set cookie for browser
+            response.set_cookie(
+                'auth_token', 
+                result['token'],
+                httponly=True,
+                secure=False,  # Set True in production with HTTPS
+                samesite='Lax',
+                max_age=7*24*60*60  # 7 days
+            )
+            return response
+        return jsonify(result), 401
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auth/logout', methods=['POST'])
+def logout():
+    """Logout user"""
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            token = request.cookies.get('auth_token')
+        
+        if token:
+            auth_service.logout(token)
+        
+        response = make_response(jsonify({"success": True, "message": "Đăng xuất thành công"}))
+        response.delete_cookie('auth_token')
+        return response
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auth/me', methods=['GET'])
+def get_current_user():
+    """Get current user info"""
+    try:
+        token = request.headers.get('Authorization', '').replace('Bearer ', '')
+        if not token:
+            token = request.cookies.get('auth_token')
+        
+        if not token:
+            return jsonify({"success": False, "error": "Chưa đăng nhập"}), 401
+        
+        user = auth_service.validate_token(token)
+        if not user:
+            return jsonify({"success": False, "error": "Phiên đăng nhập hết hạn"}), 401
+        
+        return jsonify({"success": True, "user": user})
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auth/change-password', methods=['POST'])
+@login_required
+def change_password():
+    """Change user password"""
+    try:
+        data = request.json
+        result = auth_service.change_password(
+            user_id=request.current_user['id'],
+            old_password=data.get('old_password'),
+            new_password=data.get('new_password')
+        )
+        
+        if result['success']:
+            return jsonify(result)
+        return jsonify(result), 400
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auth/profile', methods=['PUT'])
+@login_required
+def update_profile():
+    """Update user profile"""
+    try:
+        data = request.json
+        result = auth_service.update_profile(
+            user_id=request.current_user['id'],
+            full_name=data.get('full_name'),
+            email=data.get('email')
+        )
+        
+        if result['success']:
+            return jsonify(result)
+        return jsonify(result), 400
+        
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/admin/users', methods=['GET'])
+@admin_required
+def get_all_users():
+    """Get all users (admin only)"""
+    try:
+        users = auth_service.get_all_users()
+        return jsonify({"success": True, "users": users})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# ==================== Main Routes ====================
+
 @app.route('/')
 def index():
     """Main page"""
     return render_template('index.html')
+
+
+@app.route('/login')
+def login_page():
+    """Login page"""
+    return render_template('login.html')
 
 
 @app.route('/api/send-email', methods=['POST'])

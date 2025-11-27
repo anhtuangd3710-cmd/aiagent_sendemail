@@ -1,6 +1,7 @@
 """
 Configuration settings for the Email AI Agent
 Supports both Azure OpenAI and Google Gemini
+Supports SQLite (dev) and PostgreSQL (production)
 """
 import os
 from dotenv import load_dotenv
@@ -52,5 +53,22 @@ REALTIME_MODE = os.getenv("REALTIME_MODE", "true").lower() == "true"
 # ===========================================
 # Database Configuration
 # ===========================================
+# Database type: "sqlite" or "postgres"
+DATABASE_TYPE = os.getenv("DATABASE_TYPE", "sqlite").lower()
+
+# SQLite Configuration (default for development)
 DATABASE_PATH = os.getenv("DATABASE_PATH", "email_tracking.db")
+
+# PostgreSQL Configuration (for production)
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", 5432))
+POSTGRES_DB = os.getenv("POSTGRES_DB", "email_agent")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "")
+
+# ===========================================
+# Security Configuration
+# ===========================================
+SECRET_KEY = os.getenv("SECRET_KEY", "change-this-in-production")
+
 

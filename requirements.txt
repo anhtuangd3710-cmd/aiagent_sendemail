@@ -20,6 +20,13 @@ python-socketio>=5.10.0
 gevent>=23.0.0
 gevent-websocket>=0.10.1
 
+# ===========================================
+# Database
+# ===========================================
+# SQLite (built-in)
+# PostgreSQL (for production)
+psycopg2-binary>=2.9.0
+
 # Email handling
 # (built-in: smtplib, imaplib, email)
 
@@ -30,6 +37,8 @@ python-docx>=1.1.0
 # Environment variables
 python-dotenv>=1.0.0
 
-# Optional: For production deployment
+# ===========================================
+# Production Deployment (optional)
+# ===========================================
 # gunicorn>=21.0.0
 # waitress>=2.1.0

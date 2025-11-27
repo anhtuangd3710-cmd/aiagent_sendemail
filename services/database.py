@@ -310,3 +310,33 @@ class DatabaseService:
                 WHERE id = ?
             """, (datetime.now().isoformat(), cv_id))
             conn.commit()
+    
+    # ==================== Raw Query Methods (for Auth Service) ====================
+    
+    def execute_raw(self, query: str, params: tuple = None):
+        """Execute a raw SQL query"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params or ())
+            conn.commit()
+    
+    def query_raw(self, query: str, params: tuple = None, one: bool = False) -> Optional[List[Dict]]:
+        """Execute a query and return results as list of dicts"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(query, params or ())
+            if one:
+                row = cursor.fetchone()
+                return dict(row) if row else None
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows] if rows else []
+    
+    def insert_raw(self, query: str, params: tuple = None) -> int:
+        """Execute an insert query and return the last row ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params or ())
+            conn.commit()
+            return cursor.lastrowid
+
