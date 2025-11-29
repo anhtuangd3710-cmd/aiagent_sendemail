@@ -224,6 +224,19 @@ class DatabaseServicePostgres:
                 )
             """)
             
+            # User settings table - check if needs migration
+            # First check if table exists with old structure (setting_key column)
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'user_settings' AND column_name = 'setting_key'
+            """)
+            old_structure = cursor.fetchone()
+            
+            if old_structure:
+                # Drop old table and recreate with new structure
+                logger.info("Migrating user_settings table to new structure...")
+                cursor.execute("DROP TABLE IF EXISTS user_settings CASCADE")
+            
             # User settings table (for storing API keys, email settings per user)
             # Structure compatible with SQLite version
             cursor.execute("""
@@ -263,6 +276,8 @@ class DatabaseServicePostgres:
     
     def execute_raw(self, query: str, params: tuple = None):
         """Execute a raw SQL query"""
+        if not query:
+            return
         # Convert SQLite ? placeholders to PostgreSQL %s
         query = query.replace('?', '%s')
         with self.get_connection() as conn:
@@ -271,6 +286,8 @@ class DatabaseServicePostgres:
     
     def query_raw(self, query: str, params: tuple = None, one: bool = False) -> Optional[Any]:
         """Execute a query and return results"""
+        if not query:
+            return None if one else []
         # Convert SQLite ? placeholders to PostgreSQL %s
         query = query.replace('?', '%s')
         with self.get_connection() as conn:
@@ -284,6 +301,8 @@ class DatabaseServicePostgres:
     
     def insert_raw(self, query: str, params: tuple = None) -> int:
         """Execute an insert and return the ID"""
+        if not query:
+            return None
         # Convert SQLite ? placeholders to PostgreSQL %s
         query = query.replace('?', '%s')
         with self.get_connection() as conn:
