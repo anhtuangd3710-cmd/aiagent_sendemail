@@ -1,6 +1,7 @@
 /**
  * Email AI Agent - Frontend JavaScript
  * Modern, responsive UI interactions with Authentication
+ * Optimized for performance with caching, debouncing, and lazy loading
  */
 
 // API Base URL
@@ -15,6 +16,103 @@ let monitorRunning = false;
 let socket = null;
 let wsConnected = false;
 let currentUser = null;
+
+// ==================== Performance Optimization ====================
+
+// Cache configuration
+const cache = {
+    data: new Map(),
+    timestamps: new Map(),
+    ttl: {
+        emails: 30000,        // 30 seconds for emails
+        cvEvaluations: 60000, // 1 minute for CV evaluations
+        userSettings: 120000, // 2 minutes for user settings
+        dataStats: 60000,     // 1 minute for stats
+        default: 30000
+    },
+    
+    set(key, data, customTtl = null) {
+        this.data.set(key, data);
+        this.timestamps.set(key, Date.now());
+        if (customTtl) {
+            this.ttl[key] = customTtl;
+        }
+    },
+    
+    get(key) {
+        const timestamp = this.timestamps.get(key);
+        const ttl = this.ttl[key] || this.ttl.default;
+        
+        if (timestamp && (Date.now() - timestamp) < ttl) {
+            return this.data.get(key);
+        }
+        
+        // Expired, remove from cache
+        this.data.delete(key);
+        this.timestamps.delete(key);
+        return null;
+    },
+    
+    invalidate(key) {
+        this.data.delete(key);
+        this.timestamps.delete(key);
+    },
+    
+    invalidateAll() {
+        this.data.clear();
+        this.timestamps.clear();
+    }
+};
+
+// Debounce utility
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Throttle utility
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+// Request deduplication
+const pendingRequests = new Map();
+
+async function deduplicatedFetch(url, options = {}) {
+    const key = `${options.method || 'GET'}-${url}-${JSON.stringify(options.body || '')}`;
+    
+    // Check if there's already a pending request for this
+    if (pendingRequests.has(key)) {
+        return pendingRequests.get(key);
+    }
+    
+    const promise = authFetch(url, options)
+        .then(response => {
+            pendingRequests.delete(key);
+            return response;
+        })
+        .catch(error => {
+            pendingRequests.delete(key);
+            throw error;
+        });
+    
+    pendingRequests.set(key, promise);
+    return promise;
+}
 
 // DOM Elements
 const pageTitle = document.getElementById('page-title');
@@ -464,7 +562,11 @@ async function sendEmail() {
             const attachmentMsg = selectedFiles.length > 0 ? ` với ${selectedFiles.length} file đính kèm` : '';
             showToast('success', 'Thành công!', `Email đã được gửi đi${attachmentMsg}`);
             clearComposeForm();
-            loadEmails();
+            
+            // Invalidate cache and reload emails
+            cache.invalidate('emails');
+            cache.invalidate('dataStats');
+            loadEmails(true);
             
             // Close preview
             const previewSection = document.getElementById('preview-section');
@@ -565,7 +667,12 @@ function initInbox() {
     const searchInput = document.getElementById('search-emails');
     const filterBtns = document.querySelectorAll('.btn-filter');
     
-    searchInput.addEventListener('input', filterEmails);
+    // Debounced search
+    if (searchInput) {
+        searchInput.addEventListener('input', debounce(() => {
+            renderEmails();
+        }, 300));
+    }
     
     filterBtns.forEach(btn => {
         btn.addEventListener('click', () => {
@@ -575,21 +682,57 @@ function initInbox() {
         });
     });
     
-    document.getElementById('refresh-btn').addEventListener('click', loadEmails);
+    // Debounced refresh to prevent spam clicking
+    const debouncedLoadEmails = debounce(() => loadEmails(true), 500);
+    document.getElementById('refresh-btn').addEventListener('click', debouncedLoadEmails);
 }
 
-async function loadEmails() {
+// Loading state management
+let isLoadingEmails = false;
+
+async function loadEmails(forceRefresh = false) {
+    // Prevent multiple simultaneous loads
+    if (isLoadingEmails) return;
+    
+    // Check cache first
+    if (!forceRefresh) {
+        const cachedEmails = cache.get('emails');
+        if (cachedEmails) {
+            emails = cachedEmails;
+            renderEmails();
+            updatePendingCount();
+            return;
+        }
+    }
+    
+    isLoadingEmails = true;
+    
+    // Show loading state
+    const refreshBtn = document.getElementById('refresh-btn');
+    const originalContent = refreshBtn ? refreshBtn.innerHTML : '';
+    if (refreshBtn) {
+        refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        refreshBtn.disabled = true;
+    }
+    
     try {
-        const response = await authFetch(`${API_BASE}/api/emails`);
+        const response = await deduplicatedFetch(`${API_BASE}/api/emails`);
         const result = await response.json();
         
         if (result.success) {
             emails = result.emails;
+            cache.set('emails', emails);
             renderEmails();
             updatePendingCount();
         }
     } catch (error) {
         console.error('Failed to load emails:', error);
+    } finally {
+        isLoadingEmails = false;
+        if (refreshBtn) {
+            refreshBtn.innerHTML = originalContent || '<i class="fas fa-sync-alt"></i>';
+            refreshBtn.disabled = false;
+        }
     }
 }
 
@@ -1751,7 +1894,9 @@ function handleCvEvaluated(data) {
             `Đã gửi thư mời phỏng vấn đến ${data.candidate_name}`);
     }
     
-    loadCvEvaluations();
+    // Invalidate cache and reload
+    cache.invalidate('cvEvaluations');
+    loadCvEvaluations(true);
 }
 
 // ==================== Server-Sent Events (Fallback) ====================
@@ -1760,37 +1905,55 @@ function handleCvEvaluated(data) {
 let pollingInterval = null;
 let lastEmailCount = 0;
 let lastCvCount = 0;
+let pollFailCount = 0;
+const MAX_POLL_INTERVAL = 120000; // Max 2 minutes between polls
+const MIN_POLL_INTERVAL = 30000;  // Min 30 seconds between polls
 
 function startPolling() {
     if (pollingInterval) return; // Already polling
     
     console.log('📡 Starting polling fallback (WebSocket unavailable)');
     updateConnectionStatus(false, 'Polling');
+    pollFailCount = 0;
     
-    // Poll every 30 seconds
-    pollingInterval = setInterval(async () => {
+    // Smart polling - increase interval on failures, decrease on success
+    scheduleNextPoll(MIN_POLL_INTERVAL);
+}
+
+function scheduleNextPoll(interval) {
+    if (pollingInterval) {
+        clearTimeout(pollingInterval);
+    }
+    
+    pollingInterval = setTimeout(async () => {
         await pollForUpdates();
-    }, 30000);
-    
-    // Initial poll
-    pollForUpdates();
+        
+        // Adjust next interval based on success/failure
+        const nextInterval = pollFailCount > 0 
+            ? Math.min(MIN_POLL_INTERVAL * Math.pow(1.5, pollFailCount), MAX_POLL_INTERVAL)
+            : MIN_POLL_INTERVAL;
+        
+        scheduleNextPoll(nextInterval);
+    }, interval);
 }
 
 function stopPolling() {
     if (pollingInterval) {
-        clearInterval(pollingInterval);
+        clearTimeout(pollingInterval);
         pollingInterval = null;
         console.log('📡 Polling stopped (WebSocket connected)');
     }
 }
 
-async function pollForUpdates() {
+// Throttled poll to prevent too many requests
+const throttledPollForUpdates = throttle(async function() {
     try {
-        // Check for new emails/responses
-        const emailResponse = await authFetch(`${API_BASE}/api/emails`);
+        // Check for new emails/responses using cached fetch
+        const emailResponse = await deduplicatedFetch(`${API_BASE}/api/emails`);
         const emailResult = await emailResponse.json();
         
         if (emailResult.success) {
+            pollFailCount = 0; // Reset fail count on success
             const currentEmailCount = emailResult.emails.length;
             const respondedCount = emailResult.emails.filter(e => e.response_received).length;
             
@@ -1817,22 +1980,18 @@ async function pollForUpdates() {
             }
             
             emails = emailResult.emails;
+            cache.set('emails', emails); // Update cache
             renderEmails();
             updatePendingCount();
         }
-        
-        // Check for new CV evaluations
-        const cvResponse = await authFetch(`${API_BASE}/api/cv-evaluations`);
-        const cvResult = await cvResponse.json();
-        
-        if (cvResult.success && cvResult.evaluations.length > lastCvCount) {
-            lastCvCount = cvResult.evaluations.length;
-            loadCvEvaluations();
-        }
-        
     } catch (error) {
-        console.error('Polling error:', error);
+        pollFailCount++;
+        console.error('Poll failed:', error);
     }
+}, 5000);
+
+async function pollForUpdates() {
+    await throttledPollForUpdates();
 }
 
 function isRecentResponse(timestamp) {
@@ -1878,7 +2037,9 @@ function handleResponseReceived(data) {
     badge.textContent = count;
     badge.style.display = 'flex';
     
-    loadEmails();
+    // Invalidate cache and reload
+    cache.invalidate('emails');
+    loadEmails(true);
 }
 
 // ==================== Toast Notifications ====================
@@ -2216,18 +2377,40 @@ async function evaluateCv() {
     }
 }
 
-async function loadCvEvaluations() {
+// Loading state for CV evaluations
+let isLoadingCvEvaluations = false;
+
+async function loadCvEvaluations(forceRefresh = false) {
+    // Prevent multiple simultaneous loads
+    if (isLoadingCvEvaluations) return;
+    
+    // Check cache first
+    if (!forceRefresh) {
+        const cachedCvs = cache.get('cvEvaluations');
+        if (cachedCvs) {
+            cvEvaluations = cachedCvs;
+            renderCvEvaluations();
+            updateCvStats();
+            return;
+        }
+    }
+    
+    isLoadingCvEvaluations = true;
+    
     try {
-        const response = await fetch(`${API_BASE}/api/cv/list`);
+        const response = await deduplicatedFetch(`${API_BASE}/api/cv/list`);
         const result = await response.json();
         
         if (result.success) {
             cvEvaluations = result.evaluations;
+            cache.set('cvEvaluations', cvEvaluations);
             renderCvEvaluations();
             updateCvStats();
         }
     } catch (error) {
         console.error('Failed to load CV evaluations:', error);
+    } finally {
+        isLoadingCvEvaluations = false;
     }
 }
 
@@ -2593,71 +2776,93 @@ function togglePassword(inputId) {
     }
 }
 
-async function loadUserSettings() {
+// Loading state for user settings
+let isLoadingUserSettings = false;
+
+async function loadUserSettings(forceRefresh = false) {
+    // Prevent multiple simultaneous loads
+    if (isLoadingUserSettings) return;
+    
+    // Check cache first
+    if (!forceRefresh) {
+        const cachedSettings = cache.get('userSettings');
+        if (cachedSettings) {
+            applyUserSettings(cachedSettings);
+            return;
+        }
+    }
+    
+    isLoadingUserSettings = true;
+    
     try {
-        const response = await authFetch(`${API_BASE}/api/user/settings`);
+        const response = await deduplicatedFetch(`${API_BASE}/api/user/settings`);
         const data = await response.json();
         
         if (data.success && data.settings) {
-            const s = data.settings;
-            
-            // Check if email is configured - show warning if not
-            const emailConfigured = s.sender_email && s.sender_password;
-            updateEmailConfigWarning(!emailConfigured);
-            
-            // Check if Gemini API key is configured - show info
-            const hasCustomApiKey = !!s.gemini_api_key;
-            updateApiKeyInfo(hasCustomApiKey);
-            
-            // AI Provider
-            const provider = s.ai_provider || 'azure';
-            const providerRadio = document.querySelector(`input[name="ai-provider"][value="${provider}"]`);
-            if (providerRadio) {
-                providerRadio.checked = true;
-                toggleAiSettings(provider);
-            }
-            
-            // Azure settings
-            if (s.azure_openai_endpoint) {
-                document.getElementById('setting-azure-endpoint').value = s.azure_openai_endpoint;
-            }
-            if (s.azure_openai_api_key) {
-                document.getElementById('setting-azure-key').placeholder = s.azure_openai_api_key;
-            }
-            if (s.azure_openai_deployment_name) {
-                document.getElementById('setting-azure-deployment').value = s.azure_openai_deployment_name;
-            }
-            if (s.azure_openai_api_version) {
-                document.getElementById('setting-azure-version').value = s.azure_openai_api_version;
-            }
-            
-            // Gemini settings
-            if (s.gemini_api_key) {
-                document.getElementById('setting-gemini-key').placeholder = s.gemini_api_key;
-            }
-            if (s.gemini_model) {
-                document.getElementById('setting-gemini-model').value = s.gemini_model;
-            }
-            
-            // Email settings
-            if (s.sender_email) {
-                document.getElementById('setting-sender-email').value = s.sender_email;
-            }
-            if (s.email_host) {
-                document.getElementById('setting-email-host').value = s.email_host;
-            }
-            if (s.email_port) {
-                document.getElementById('setting-email-port').value = s.email_port;
-            }
-            if (s.imap_host) {
-                document.getElementById('setting-imap-host').value = s.imap_host;
-            }
-            if (s.imap_port) {
-                document.getElementById('setting-imap-port').value = s.imap_port;
-            }
+            cache.set('userSettings', data.settings);
+            applyUserSettings(data.settings);
         }
     } catch (error) {
         console.error('Error loading settings:', error);
+    } finally {
+        isLoadingUserSettings = false;
+    }
+}
+
+function applyUserSettings(s) {
+    // Check if email is configured - show warning if not
+    const emailConfigured = s.sender_email && s.sender_password;
+    updateEmailConfigWarning(!emailConfigured);
+    
+    // Check if Gemini API key is configured - show info
+    const hasCustomApiKey = !!s.gemini_api_key;
+    updateApiKeyInfo(hasCustomApiKey);
+    
+    // AI Provider
+    const provider = s.ai_provider || 'azure';
+    const providerRadio = document.querySelector(`input[name="ai-provider"][value="${provider}"]`);
+    if (providerRadio) {
+        providerRadio.checked = true;
+        toggleAiSettings(provider);
+    }
+    
+    // Azure settings
+    if (s.azure_openai_endpoint) {
+        document.getElementById('setting-azure-endpoint').value = s.azure_openai_endpoint;
+    }
+    if (s.azure_openai_api_key) {
+        document.getElementById('setting-azure-key').placeholder = s.azure_openai_api_key;
+    }
+    if (s.azure_openai_deployment_name) {
+        document.getElementById('setting-azure-deployment').value = s.azure_openai_deployment_name;
+    }
+    if (s.azure_openai_api_version) {
+        document.getElementById('setting-azure-version').value = s.azure_openai_api_version;
+    }
+    
+    // Gemini settings
+    if (s.gemini_api_key) {
+        document.getElementById('setting-gemini-key').placeholder = s.gemini_api_key;
+    }
+    if (s.gemini_model) {
+        document.getElementById('setting-gemini-model').value = s.gemini_model;
+    }
+    
+    // Email settings
+    if (s.sender_email) {
+        document.getElementById('setting-sender-email').value = s.sender_email;
+    }
+    if (s.email_host) {
+        document.getElementById('setting-email-host').value = s.email_host;
+    }
+    if (s.email_port) {
+        document.getElementById('setting-email-port').value = s.email_port;
+    }
+    if (s.imap_host) {
+        document.getElementById('setting-imap-host').value = s.imap_host;
+    }
+    if (s.imap_port) {
+        document.getElementById('setting-imap-port').value = s.imap_port;
     }
 }
 
@@ -2887,21 +3092,35 @@ async function changePassword() {
 
 // ==================== Data Management ====================
 
-async function loadDataStats() {
+async function loadDataStats(forceRefresh = false) {
+    // Check cache first
+    if (!forceRefresh) {
+        const cachedStats = cache.get('dataStats');
+        if (cachedStats) {
+            applyDataStats(cachedStats);
+            return;
+        }
+    }
+    
     try {
-        const response = await authFetch(`${API_BASE}/api/data/stats`);
+        const response = await deduplicatedFetch(`${API_BASE}/api/data/stats`);
         const data = await response.json();
         
         if (data.success) {
-            const emailCountEl = document.getElementById('email-count');
-            const cvCountEl = document.getElementById('cv-count');
-            
-            if (emailCountEl) emailCountEl.textContent = data.email_count || 0;
-            if (cvCountEl) cvCountEl.textContent = data.cv_count || 0;
+            cache.set('dataStats', data);
+            applyDataStats(data);
         }
     } catch (error) {
         console.error('Error loading data stats:', error);
     }
+}
+
+function applyDataStats(data) {
+    const emailCountEl = document.getElementById('email-count');
+    const cvCountEl = document.getElementById('cv-count');
+    
+    if (emailCountEl) emailCountEl.textContent = data.email_count || 0;
+    if (cvCountEl) cvCountEl.textContent = data.cv_count || 0;
 }
 
 async function deleteAllEmails() {
@@ -2926,8 +3145,11 @@ async function deleteAllEmails() {
         
         if (data.success) {
             showToast('success', 'Thành công!', `Đã xóa ${data.deleted_count} email`);
-            loadDataStats();
-            loadEmails(); // Refresh email list
+            // Invalidate cache and reload
+            cache.invalidate('emails');
+            cache.invalidate('dataStats');
+            loadDataStats(true);
+            loadEmails(true);
         } else {
             showToast('error', 'Lỗi', data.error || 'Không thể xóa email');
         }
@@ -2961,8 +3183,11 @@ async function deleteAllCvs() {
         
         if (data.success) {
             showToast('success', 'Thành công!', `Đã xóa ${data.deleted_count} CV`);
-            loadDataStats();
-            loadCvEvaluations(); // Refresh CV list
+            // Invalidate cache and reload
+            cache.invalidate('cvEvaluations');
+            cache.invalidate('dataStats');
+            loadDataStats(true);
+            loadCvEvaluations(true);
         } else {
             showToast('error', 'Lỗi', data.error || 'Không thể xóa CV');
         }

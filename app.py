@@ -101,6 +101,69 @@ app.secret_key = 'email-agent-secret-key-change-in-production'
 CORS(app, supports_credentials=True)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+# ==================== Performance Optimization ====================
+
+# Server-side cache for reducing database calls
+from functools import lru_cache
+import time
+
+class ServerCache:
+    """Simple TTL cache for server-side caching"""
+    def __init__(self):
+        self._cache = {}
+        self._timestamps = {}
+        self._ttl = {
+            'emails': 10,       # 10 seconds for emails
+            'cv_list': 30,      # 30 seconds for CV list
+            'stats': 30,        # 30 seconds for stats
+            'settings': 60,     # 1 minute for user settings
+        }
+    
+    def get(self, key):
+        if key in self._cache:
+            ttl = self._ttl.get(key.split(':')[0], 30)
+            if time.time() - self._timestamps.get(key, 0) < ttl:
+                return self._cache[key]
+            else:
+                del self._cache[key]
+                del self._timestamps[key]
+        return None
+    
+    def set(self, key, value):
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+    
+    def invalidate(self, pattern=None):
+        if pattern:
+            keys_to_delete = [k for k in self._cache if pattern in k]
+            for k in keys_to_delete:
+                del self._cache[k]
+                del self._timestamps[k]
+        else:
+            self._cache.clear()
+            self._timestamps.clear()
+
+server_cache = ServerCache()
+
+# Response compression middleware
+@app.after_request
+def add_cache_headers(response):
+    """Add cache headers and compression hints"""
+    # For API responses, add cache control
+    if request.path.startswith('/api/'):
+        # Short cache for dynamic data
+        if 'emails' in request.path or 'cv' in request.path:
+            response.headers['Cache-Control'] = 'private, max-age=5'
+        elif 'stats' in request.path:
+            response.headers['Cache-Control'] = 'private, max-age=30'
+        else:
+            response.headers['Cache-Control'] = 'no-cache'
+    
+    # Add compression hint
+    response.headers['Vary'] = 'Accept-Encoding'
+    
+    return response
+
 # Initialize services
 email_service = EmailService()
 ai_agent = AIAgent()
@@ -124,6 +187,9 @@ connected_clients = 0
 
 def notification_callback(email_record, response, analysis):
     """Callback when a response is received - emit via WebSocket"""
+    # Invalidate email cache when new response received
+    server_cache.invalidate('emails')
+    
     event_data = {
         "type": "response_received",
         "email_id": email_record['id'],
@@ -539,6 +605,11 @@ def send_email():
         )
         
         if success:
+            # Invalidate email cache for this user
+            user_id = request.current_user['id']
+            server_cache.invalidate(f'emails:{user_id}')
+            server_cache.invalidate(f'stats:{user_id}')
+            
             # Save to database
             email_id = database.save_sent_email(
                 sender_name=sender_name,
@@ -658,9 +729,20 @@ def preview_email():
 @app.route('/api/emails', methods=['GET'])
 @login_required
 def get_emails():
-    """Get all tracked emails"""
+    """Get all tracked emails with server-side caching"""
     try:
         user_id = request.current_user['id']
+        cache_key = f'emails:{user_id}'
+        
+        # Check server cache first
+        cached = server_cache.get(cache_key)
+        if cached:
+            return jsonify({
+                "success": True,
+                "emails": cached,
+                "cached": True
+            })
+        
         emails = database.get_all_emails(user_id)
         
         # Parse analysis JSON for each email
@@ -670,6 +752,9 @@ def get_emails():
                     email['analysis'] = json.loads(email['analysis'])
                 except:
                     pass
+        
+        # Cache the result
+        server_cache.set(cache_key, emails)
         
         return jsonify({
             "success": True,
@@ -947,6 +1032,11 @@ def delete_email(email_id):
                 "success": False,
                 "error": "Email not found or access denied"
             }), 404
+        
+        # Invalidate cache
+        server_cache.invalidate(f'emails:{user_id}')
+        server_cache.invalidate(f'stats:{user_id}')
+        
         return jsonify({
             "success": True,
             "message": "Email deleted successfully"
@@ -974,6 +1064,11 @@ def delete_multiple_emails():
             }), 400
         
         deleted_count = database.delete_emails(email_ids, user_id)
+        
+        # Invalidate cache
+        server_cache.invalidate(f'emails:{user_id}')
+        server_cache.invalidate(f'stats:{user_id}')
+        
         return jsonify({
             "success": True,
             "message": f"Deleted {deleted_count} emails",
@@ -993,6 +1088,11 @@ def delete_all_emails():
     try:
         user_id = request.current_user['id']
         deleted_count = database.delete_all_emails(user_id)
+        
+        # Invalidate cache
+        server_cache.invalidate(f'emails:{user_id}')
+        server_cache.invalidate(f'stats:{user_id}')
+        
         return jsonify({
             "success": True,
             "message": f"Deleted all {deleted_count} emails",
@@ -1012,6 +1112,11 @@ def delete_all_cv_evaluations():
     try:
         user_id = request.current_user['id']
         deleted_count = database.delete_all_cv_evaluations(user_id)
+        
+        # Invalidate cache
+        server_cache.invalidate(f'cv_list:{user_id}')
+        server_cache.invalidate(f'stats:{user_id}')
+        
         return jsonify({
             "success": True,
             "message": f"Deleted all {deleted_count} CV evaluations",
