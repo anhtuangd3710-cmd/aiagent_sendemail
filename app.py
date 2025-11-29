@@ -801,19 +801,40 @@ def get_data_stats():
 @app.route('/api/check-responses', methods=['POST'])
 @login_required
 def check_responses():
-    """Check for responses once"""
+    """Check for responses once using user's email settings"""
     try:
-        temp_monitor = EmailMonitor(
-            email_service,
-            ai_agent,
-            database,
-            notification_callback=notification_callback
-        )
-        temp_monitor.check_responses()
+        # Get user settings from database
+        user_settings = database.get_user_settings(request.current_user['id'])
+        
+        if user_settings and user_settings.get('sender_email') and user_settings.get('sender_password'):
+            # Create email service with user's settings
+            user_email_service = EmailService()
+            user_email_service.sender_email = user_settings.get('sender_email')
+            user_email_service.sender_password = user_settings.get('sender_password')
+            user_email_service.imap_host = user_settings.get('imap_host', 'imap.gmail.com')
+            user_email_service.imap_port = int(user_settings.get('imap_port', 993))
+            
+            temp_monitor = EmailMonitor(
+                user_email_service,
+                ai_agent,
+                database,
+                notification_callback=notification_callback
+            )
+        else:
+            temp_monitor = EmailMonitor(
+                email_service,
+                ai_agent,
+                database,
+                notification_callback=notification_callback
+            )
+        
+        # Check responses and get results
+        results = temp_monitor.check_responses_with_details()
         
         return jsonify({
             "success": True,
-            "message": "Response check completed"
+            "message": "Response check completed",
+            "results": results
         })
         
     except Exception as e:

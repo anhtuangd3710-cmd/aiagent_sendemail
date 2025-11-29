@@ -1,12 +1,14 @@
 """
 CV Evaluator Service - Đánh giá CV ứng viên sử dụng Google Gemini API
 Phiên bản sử dụng Gemini thay vì Azure OpenAI
+Tối ưu hóa để có kết quả nhất quán và chính xác
 """
 import google.generativeai as genai
 from typing import Dict, Optional, List
 import logging
 import json
 import re
+import hashlib
 
 from config.settings import GEMINI_API_KEY, GEMINI_MODEL
 
@@ -19,15 +21,23 @@ class CVEvaluatorGemini:
     
     def __init__(self):
         genai.configure(api_key=GEMINI_API_KEY)
+        # Temperature = 0 để có kết quả nhất quán nhất
         self.model = genai.GenerativeModel(
             model_name=GEMINI_MODEL,
             generation_config={
-                "temperature": 0.3,
-                "top_p": 0.95,
-                "top_k": 40,
+                "temperature": 0,  # Đặt 0 để loại bỏ tính ngẫu nhiên
+                "top_p": 1,        # Deterministic output
+                "top_k": 1,        # Chọn token có xác suất cao nhất
                 "max_output_tokens": 8192,
             }
         )
+        # Cache để tránh đánh giá lại cùng một CV
+        self._evaluation_cache = {}
+        
+    def _get_cache_key(self, cv_content: str, job_title: str, job_requirements: str) -> str:
+        """Tạo cache key từ nội dung CV và yêu cầu công việc"""
+        content = f"{cv_content.strip().lower()}|{job_title.strip().lower()}|{job_requirements.strip().lower()}"
+        return hashlib.md5(content.encode()).hexdigest()
         
     def _extract_json(self, text: str) -> Dict:
         """Extract JSON from response text"""
@@ -52,6 +62,21 @@ class CVEvaluatorGemini:
         
         logger.error(f"Could not parse JSON from: {text[:500]}")
         return {}
+    
+    def _normalize_cv_content(self, cv_content: str) -> str:
+        """Chuẩn hóa nội dung CV để đánh giá nhất quán"""
+        # Loại bỏ khoảng trắng thừa
+        lines = [line.strip() for line in cv_content.split('\n') if line.strip()]
+        return '\n'.join(lines)
+    
+    def _extract_keywords(self, text: str) -> List[str]:
+        """Trích xuất các từ khóa quan trọng từ yêu cầu công việc"""
+        # Các pattern phổ biến cho kỹ năng
+        keywords = []
+        # Tìm các từ viết hoa hoặc thuật ngữ kỹ thuật
+        tech_patterns = re.findall(r'\b[A-Z][a-zA-Z+#]*\b|\b\d+\+?\s*(?:năm|year)s?\b', text)
+        keywords.extend(tech_patterns)
+        return list(set(keywords))
         
     def evaluate_cv(
         self,
@@ -62,6 +87,7 @@ class CVEvaluatorGemini:
     ) -> Dict:
         """
         Đánh giá CV của ứng viên so với yêu cầu công việc
+        Sử dụng hệ thống chấm điểm chi tiết với rubric cụ thể
         
         Args:
             cv_content: Nội dung CV (text)
@@ -72,53 +98,109 @@ class CVEvaluatorGemini:
         Returns:
             Dictionary chứa kết quả đánh giá
         """
-        prompt = f"""Bạn là chuyên gia tuyển dụng (HR Expert) có kinh nghiệm đánh giá CV ứng viên.
-Nhiệm vụ của bạn là phân tích CV và so sánh với yêu cầu công việc để đưa ra đánh giá chi tiết.
+        # Chuẩn hóa input
+        cv_normalized = self._normalize_cv_content(cv_content)
+        job_title = job_title.strip()
+        job_requirements = job_requirements.strip()
+        
+        # Kiểm tra cache
+        cache_key = self._get_cache_key(cv_normalized, job_title, job_requirements)
+        if cache_key in self._evaluation_cache:
+            logger.info(f"Returning cached evaluation for CV")
+            return self._evaluation_cache[cache_key]
+        
+        prompt = f"""Bạn là hệ thống đánh giá CV tự động với tiêu chí KHÁCH QUAN và NHẤT QUÁN.
+Nhiệm vụ: Phân tích CV và chấm điểm DỰA TRÊN BẰNG CHỨNG CỤ THỂ có trong CV.
 
-Hãy đánh giá theo các tiêu chí sau:
-1. Kỹ năng kỹ thuật (Technical Skills) - 30%
-2. Kinh nghiệm làm việc (Experience) - 25%
-3. Học vấn/Chứng chỉ (Education/Certifications) - 20%
-4. Kỹ năng mềm (Soft Skills) - 15%
-5. Độ phù hợp tổng thể (Overall Fit) - 10%
+=== QUY TẮC CHẤM ĐIỂM NGHIÊM NGẶT ===
 
-Hãy đánh giá CV sau đây cho vị trí: {job_title}
-{f'Công ty: {company_name}' if company_name else ''}
+1. KỸ NĂNG KỸ THUẬT (0-30 điểm):
+   - Mỗi kỹ năng CHÍNH XÁC khớp với yêu cầu: +5 điểm (tối đa 20 điểm)
+   - Kỹ năng liên quan/tương tự: +2 điểm (tối đa 10 điểm)
+   - KHÔNG có bằng chứng = 0 điểm
 
-=== YÊU CẦU CÔNG VIỆC ===
+2. KINH NGHIỆM LÀM VIỆC (0-25 điểm):
+   - Kinh nghiệm đúng lĩnh vực >= yêu cầu: 25 điểm
+   - Kinh nghiệm đúng lĩnh vực < yêu cầu: (số năm thực tế / số năm yêu cầu) × 25
+   - Kinh nghiệm lĩnh vực liên quan: 50% số điểm
+   - Không có kinh nghiệm liên quan: 0-5 điểm (dựa trên dự án cá nhân)
+
+3. HỌC VẤN/CHỨNG CHỈ (0-20 điểm):
+   - Bằng cấp đúng chuyên ngành yêu cầu: 15 điểm
+   - Bằng cấp liên quan: 10 điểm
+   - Chứng chỉ chuyên môn phù hợp: +2-5 điểm mỗi chứng chỉ
+
+4. KỸ NĂNG MỀM (0-15 điểm):
+   - Chỉ tính điểm nếu có BẰNG CHỨNG CỤ THỂ (dự án, thành tích, vai trò)
+   - Kỹ năng leadership có bằng chứng: +5 điểm
+   - Kỹ năng teamwork có bằng chứng: +5 điểm  
+   - Kỹ năng communication có bằng chứng: +5 điểm
+
+5. ĐỘ PHÙ HỢP TỔNG THỂ (0-10 điểm):
+   - Phù hợp hoàn toàn với mô tả công việc: 8-10 điểm
+   - Phù hợp phần lớn: 5-7 điểm
+   - Phù hợp một phần: 2-4 điểm
+   - Ít phù hợp: 0-1 điểm
+
+=== THÔNG TIN ĐÁNH GIÁ ===
+
+VỊ TRÍ TUYỂN DỤNG: {job_title}
+{f'CÔNG TY: {company_name}' if company_name else ''}
+
+YÊU CẦU CÔNG VIỆC:
 {job_requirements}
 
-=== NỘI DUNG CV ỨNG VIÊN ===
-{cv_content}
+NỘI DUNG CV ỨNG VIÊN:
+{cv_normalized}
 
-Hãy đánh giá chi tiết và cho điểm từ 0-100. Ứng viên được coi là PHÙ HỢP nếu điểm >= 85.
+=== YÊU CẦU OUTPUT ===
 
-Trả về kết quả bằng TIẾNG VIỆT CHÍNH XÁC dưới dạng JSON với cấu trúc sau (không có text khác):
+Phân tích TỪNG tiêu chí, liệt kê BẰNG CHỨNG CỤ THỂ từ CV, sau đó cho điểm.
+Tổng điểm overall_score = technical_skills + experience + education + soft_skills + overall_fit
+Ứng viên ĐẠT YÊU CẦU nếu overall_score >= 85.
+
+Trả về KẾT QUẢ DUY NHẤT dưới dạng JSON (không có text khác):
 {{
-    "overall_score": 0-100,
-    "is_qualified": true/false,
-    "technical_skills": 0-30,
-    "experience": 0-25,
-    "education": 0-20,
-    "soft_skills": 0-15,
-    "overall_fit": 0-10,
-    "strengths": ["điểm mạnh 1", "điểm mạnh 2"],
+    "overall_score": <tổng điểm 0-100>,
+    "is_qualified": <true nếu >= 85, false nếu < 85>,
+    "technical_skills": <0-30>,
+    "experience": <0-25>,
+    "education": <0-20>,
+    "soft_skills": <0-15>,
+    "overall_fit": <0-10>,
+    "strengths": ["điểm mạnh 1 với bằng chứng cụ thể", "điểm mạnh 2"],
     "weaknesses": ["điểm yếu 1", "điểm yếu 2"],
     "missing_requirements": ["yêu cầu thiếu 1", "yêu cầu thiếu 2"],
-    "recommendation": "Khuyến nghị chi tiết",
-    "summary": "Tóm tắt ngắn gọn về ứng viên"
-}}
-
-Lưu ý: is_qualified = true nếu overall_score >= 85"""
+    "matched_skills": ["kỹ năng khớp 1", "kỹ năng khớp 2"],
+    "recommendation": "TUYỂN DỤNG / XEM XÉT THÊM / KHÔNG PHÙ HỢP - lý do ngắn gọn",
+    "summary": "Tóm tắt 2-3 câu về ứng viên dựa trên bằng chứng"
+}}"""
 
         try:
             response = self.model.generate_content(prompt)
             result = self._extract_json(response.text)
             
             if result:
-                # Đảm bảo is_qualified dựa trên overall_score
-                result['is_qualified'] = result.get('overall_score', 0) >= 85
-                logger.info(f"CV evaluated with Gemini: Score={result.get('overall_score', 0)}, Qualified={result.get('is_qualified', False)}")
+                # Validate và tính lại overall_score để đảm bảo chính xác
+                tech = min(30, max(0, result.get('technical_skills', 0)))
+                exp = min(25, max(0, result.get('experience', 0)))
+                edu = min(20, max(0, result.get('education', 0)))
+                soft = min(15, max(0, result.get('soft_skills', 0)))
+                fit = min(10, max(0, result.get('overall_fit', 0)))
+                
+                calculated_score = tech + exp + edu + soft + fit
+                result['technical_skills'] = tech
+                result['experience'] = exp
+                result['education'] = edu
+                result['soft_skills'] = soft
+                result['overall_fit'] = fit
+                result['overall_score'] = calculated_score
+                result['is_qualified'] = calculated_score >= 85
+                
+                # Lưu vào cache
+                self._evaluation_cache[cache_key] = result
+                
+                logger.info(f"CV evaluated with Gemini: Score={calculated_score}, Qualified={result['is_qualified']}")
                 return result
             else:
                 return {
@@ -136,6 +218,11 @@ Lưu ý: is_qualified = true nếu overall_score >= 85"""
                 "error": str(e),
                 "summary": f"Lỗi khi đánh giá CV: {str(e)}"
             }
+    
+    def clear_cache(self):
+        """Xóa cache đánh giá"""
+        self._evaluation_cache.clear()
+        logger.info("Evaluation cache cleared")
     
     def generate_interview_invitation(
         self,

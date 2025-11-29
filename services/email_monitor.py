@@ -4,7 +4,7 @@ Email Monitor Service - Monitors for responses and triggers analysis
 import time
 import threading
 from datetime import datetime, timedelta
-from typing import Callable, Optional
+from typing import Callable, Optional, List, Dict
 import logging
 
 from services.email_service import EmailService
@@ -77,6 +77,90 @@ class EmailMonitor:
             except Exception as e:
                 logger.error(f"Error processing responses for email {email_record['id']}: {str(e)}")
     
+    def check_responses_with_details(self) -> Dict:
+        """Check for responses and return detailed results"""
+        results = {
+            "pending_emails": 0,
+            "responses_found": 0,
+            "responses_processed": 0,
+            "errors": [],
+            "details": []
+        }
+        
+        pending_emails = self.database.get_pending_emails()
+        
+        if not pending_emails:
+            logger.info("No pending emails to check")
+            return results
+        
+        results["pending_emails"] = len(pending_emails)
+        logger.info(f"Checking responses for {len(pending_emails)} pending emails using {self.email_service.sender_email}")
+        
+        for email_record in pending_emails:
+            try:
+                response_info = self._process_email_responses_with_details(email_record)
+                if response_info:
+                    results["responses_found"] += response_info.get("found", 0)
+                    results["responses_processed"] += response_info.get("processed", 0)
+                    results["details"].append(response_info)
+            except Exception as e:
+                error_msg = f"Error for email {email_record['id']} to {email_record['recipient_email']}: {str(e)}"
+                logger.error(error_msg)
+                results["errors"].append(error_msg)
+        
+        return results
+    
+    def _process_email_responses_with_details(self, email_record: dict) -> Dict:
+        """Process responses for a specific sent email and return details"""
+        recipient_email = email_record['recipient_email']
+        sent_date = datetime.fromisoformat(email_record['sent_at'])
+        
+        result = {
+            "email_id": email_record['id'],
+            "recipient": recipient_email,
+            "found": 0,
+            "processed": 0,
+            "responses": []
+        }
+        
+        try:
+            # Get responses using instance's email service (with user's IMAP settings)
+            responses = self.email_service.get_responses_with_config(
+                from_email=recipient_email,
+                subject_contains=email_record['subject'].split()[:3][0] if email_record['subject'] else None,
+                since_date=sent_date - timedelta(hours=1)
+            )
+            
+            if not responses:
+                logger.info(f"No responses found from {recipient_email}")
+                return result
+            
+            result["found"] = len(responses)
+            logger.info(f"Found {len(responses)} potential responses from {recipient_email}")
+            
+            # Process each response
+            for response in responses:
+                try:
+                    analysis = self._analyze_and_notify(email_record, response)
+                    result["processed"] += 1
+                    result["responses"].append({
+                        "subject": response.get('subject', ''),
+                        "analyzed": True,
+                        "decision": analysis.get('decision', 'unknown') if analysis else 'unknown'
+                    })
+                except Exception as e:
+                    logger.error(f"Failed to process response: {str(e)}")
+                    result["responses"].append({
+                        "subject": response.get('subject', ''),
+                        "analyzed": False,
+                        "error": str(e)
+                    })
+        except Exception as e:
+            logger.error(f"Failed to get responses from {recipient_email}: {str(e)}")
+            result["error"] = str(e)
+        
+        return result
+
     def _process_email_responses(self, email_record: dict):
         """Process responses for a specific sent email"""
         recipient_email = email_record['recipient_email']

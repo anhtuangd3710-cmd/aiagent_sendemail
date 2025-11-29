@@ -225,6 +225,104 @@ class EmailService:
             
         return responses
     
+    def get_responses_with_config(
+        self, 
+        from_email: str, 
+        subject_contains: Optional[str] = None,
+        since_date: Optional[datetime] = None
+    ) -> List[Dict]:
+        """
+        Check for email responses using instance's IMAP settings
+        
+        Args:
+            from_email: Email address to check responses from (Person B)
+            subject_contains: Optional subject filter
+            since_date: Only get emails after this date
+            
+        Returns:
+            List of email dictionaries with subject, body, date
+        """
+        responses = []
+        
+        # Use instance's IMAP settings
+        imap_host = self.imap_host
+        imap_port = self.imap_port
+        
+        try:
+            # Connect to IMAP server with timeout using instance settings
+            logger.info(f"Connecting to IMAP server {imap_host}:{imap_port} as {self.sender_email}...")
+            mail = imaplib.IMAP4_SSL(imap_host, imap_port, timeout=30)
+            logger.info("IMAP connection established, logging in...")
+            mail.login(self.sender_email, self.sender_password)
+            mail.select("INBOX")
+            
+            # Build search criteria
+            search_criteria = f'FROM "{from_email}"'
+            if since_date:
+                date_str = since_date.strftime("%d-%b-%Y")
+                search_criteria = f'({search_criteria} SINCE {date_str})'
+            
+            logger.info(f"Searching emails with criteria: {search_criteria}")
+            
+            # Search for emails
+            status, messages = mail.search(None, search_criteria)
+            
+            if status != "OK":
+                logger.warning("No messages found")
+                mail.logout()
+                return responses
+            
+            email_ids = messages[0].split()
+            logger.info(f"Found {len(email_ids)} emails from {from_email}")
+            
+            for email_id in email_ids:
+                status, msg_data = mail.fetch(email_id, "(RFC822)")
+                
+                if status != "OK":
+                    continue
+                    
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        msg = email.message_from_bytes(response_part[1])
+                        
+                        # Decode subject
+                        subject, encoding = decode_header(msg["Subject"])[0]
+                        if isinstance(subject, bytes):
+                            subject = subject.decode(encoding or "utf-8")
+                        
+                        # Filter by subject if specified
+                        if subject_contains and subject_contains.lower() not in subject.lower():
+                            continue
+                        
+                        # Get email body
+                        body = self._get_email_body(msg)
+                        
+                        # Get date
+                        date_str = msg["Date"]
+                        
+                        responses.append({
+                            "email_id": email_id.decode(),
+                            "from": from_email,
+                            "subject": subject,
+                            "body": body,
+                            "date": date_str,
+                            "message_id": msg.get("Message-ID", "")
+                        })
+            
+            mail.logout()
+            logger.info(f"Successfully retrieved {len(responses)} responses")
+            
+        except socket.timeout:
+            logger.error(f"IMAP connection to {imap_host}:{imap_port} timed out.")
+        except imaplib.IMAP4.error as e:
+            logger.error(f"IMAP authentication failed for {self.sender_email}: {str(e)}")
+        except ConnectionRefusedError:
+            logger.error(f"IMAP connection to {imap_host}:{imap_port} refused.")
+        except Exception as e:
+            logger.error(f"Failed to get responses: {str(e)}")
+            
+        return responses
+    
     def check_imap_connection(self) -> Dict:
         """
         Test IMAP connection and return status
