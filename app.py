@@ -10,13 +10,22 @@ import json
 import threading
 import queue
 import atexit
+import os
 from datetime import datetime
 
 from services.email_service import EmailService
-from services.database import DatabaseService
 from services.email_monitor import EmailMonitor, ManualResponseProcessor
 from services.auth_service import AuthService, login_required, admin_required
 from config.settings import SENDER_EMAIL, AI_PROVIDER, AUTO_START_MONITOR
+
+# Import Database Service based on DATABASE_URL
+DATABASE_URL = os.getenv('DATABASE_URL')
+if DATABASE_URL:
+    from services.database_postgres import DatabaseServicePostgres as DatabaseService
+    print("🗄️ Using PostgreSQL (Neon Database)")
+else:
+    from services.database import DatabaseService
+    print("🗄️ Using SQLite")
 
 # Import AI services based on provider
 if AI_PROVIDER == "gemini":
