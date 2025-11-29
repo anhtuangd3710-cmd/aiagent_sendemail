@@ -1248,6 +1248,10 @@ body {
     margin-bottom: 8px;
 }
 
+.email-detail-section h4 i {
+    margin-right: 6px;
+}
+
 .email-detail-section p {
     font-size: 0.9375rem;
 }
@@ -1259,6 +1263,25 @@ body {
     white-space: pre-wrap;
     font-size: 0.875rem;
     line-height: 1.7;
+}
+
+/* Response section in email detail */
+.email-detail-section.response-section {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    padding: 16px;
+    border-radius: var(--border-radius);
+    border-left: 4px solid var(--success-color);
+}
+
+.email-detail-section.response-section h4 {
+    color: var(--success-color);
+    font-size: 0.875rem;
+}
+
+.email-detail-section.response-section .response-content {
+    background: white;
+    padding: 12px;
+    border-radius: var(--border-radius-sm);
 }
 
 .analysis-result {
@@ -1770,6 +1793,130 @@ body {
 /* CV Modal Styles */
 .modal-lg .modal-content {
     max-width: 800px;
+}
+
+/* Reply Email Modal Styles */
+.reply-context {
+    background: var(--bg-primary);
+    border-radius: var(--border-radius);
+    padding: 16px;
+    margin-bottom: 20px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.reply-context h5 {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reply-context .original-email {
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+
+.reply-context .response-received {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--border-color);
+}
+
+.reply-context .response-received h6 {
+    color: var(--success-color);
+    font-size: 0.8rem;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.reply-preview {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1px solid var(--success-color);
+    border-radius: var(--border-radius);
+    padding: 20px;
+    margin-top: 20px;
+}
+
+.reply-preview h4 {
+    color: var(--success-color);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.reply-preview .preview-subject {
+    font-weight: 600;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.reply-preview .preview-body {
+    white-space: pre-wrap;
+    line-height: 1.6;
+}
+
+/* Conversation Thread Styles */
+.conversation-thread {
+    max-height: 300px;
+    overflow-y: auto;
+    margin-bottom: 20px;
+    padding: 16px;
+    background: var(--bg-primary);
+    border-radius: var(--border-radius);
+}
+
+.thread-item {
+    padding: 12px 16px;
+    margin-bottom: 12px;
+    border-radius: var(--border-radius-sm);
+    position: relative;
+}
+
+.thread-item:last-child {
+    margin-bottom: 0;
+}
+
+.thread-item.sent {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border-left: 3px solid var(--info-color);
+    margin-left: 20px;
+}
+
+.thread-item.received {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border-left: 3px solid var(--success-color);
+    margin-right: 20px;
+}
+
+.thread-item .thread-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.thread-item .thread-header .sender {
+    font-weight: 600;
+}
+
+.thread-item .thread-body {
+    font-size: 0.9rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+}
+
+.thread-item .thread-subject {
+    font-weight: 500;
+    margin-bottom: 6px;
+    font-size: 0.875rem;
 }
 
 .cv-detail-section {

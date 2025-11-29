@@ -903,6 +903,49 @@
                 <button class="btn btn-secondary" id="manual-response-btn">
                     <i class="fas fa-reply"></i> Nhập phản hồi thủ công
                 </button>
+                <button class="btn btn-primary" id="reply-email-btn" style="display: none;">
+                    <i class="fas fa-paper-plane"></i> Trả lời Email
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reply Email Modal -->
+    <div class="modal" id="reply-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2><i class="fas fa-reply"></i> Trả lời Email</h2>
+                <button class="btn btn-icon close-reply-modal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="reply-context" id="reply-context">
+                    <!-- Original email context will be shown here -->
+                </div>
+                <div class="form-group">
+                    <label>Mục đích trả lời <span class="required">*</span></label>
+                    <textarea id="reply-purpose" rows="3" placeholder="Mô tả nội dung bạn muốn trả lời..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>Thông tin bổ sung</label>
+                    <textarea id="reply-additional-context" rows="2" placeholder="Thêm thông tin chi tiết nếu cần..."></textarea>
+                </div>
+                <div class="reply-preview" id="reply-preview" style="display: none;">
+                    <h4><i class="fas fa-eye"></i> Xem trước email trả lời</h4>
+                    <div class="preview-subject" id="reply-preview-subject"></div>
+                    <div class="preview-body" id="reply-preview-body"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-reply-modal">Hủy</button>
+                <button class="btn btn-outline-primary" id="preview-reply-btn">
+                    <i class="fas fa-eye"></i> Xem trước
+                </button>
+                <button class="btn btn-primary" id="send-reply-btn">
+                    <i class="fas fa-paper-plane"></i> Gửi trả lời
+                </button>
             </div>
         </div>
     </div>

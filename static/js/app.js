@@ -1094,14 +1094,58 @@ function initModals() {
     
     // Analyze response
     document.getElementById('analyze-response-btn').addEventListener('click', analyzeManualResponse);
+    
+    // Reply modal
+    const replyModal = document.getElementById('reply-modal');
+    if (replyModal) {
+        const closeReplyBtns = replyModal.querySelectorAll('.close-reply-modal');
+        const replyOverlay = replyModal.querySelector('.modal-overlay');
+        
+        closeReplyBtns.forEach(btn => {
+            btn.addEventListener('click', closeReplyModal);
+        });
+        replyOverlay.addEventListener('click', closeReplyModal);
+        
+        // Reply email button in email detail modal
+        const replyBtn = document.getElementById('reply-email-btn');
+        if (replyBtn) {
+            replyBtn.addEventListener('click', openReplyModal);
+        }
+        
+        // Preview reply button
+        const previewReplyBtn = document.getElementById('preview-reply-btn');
+        if (previewReplyBtn) {
+            previewReplyBtn.addEventListener('click', previewReplyEmail);
+        }
+        
+        // Send reply button
+        const sendReplyBtn = document.getElementById('send-reply-btn');
+        if (sendReplyBtn) {
+            sendReplyBtn.addEventListener('click', sendReplyEmail);
+        }
+    }
 }
 
 function showEmailDetail(email) {
     currentEmailId = email.id;
+    window.currentEmailData = email; // Store for reply functionality
     const modal = document.getElementById('email-modal');
     const modalBody = document.getElementById('modal-body');
     
     let analysisHtml = '';
+    let responseHtml = '';
+    
+    if (email.response_received && email.response_body) {
+        responseHtml = `
+            <div class="email-detail-section response-section">
+                <h4><i class="fas fa-reply"></i> Phản hồi đã nhận</h4>
+                <div class="response-content">
+                    <div class="body-content">${email.response_body}</div>
+                </div>
+            </div>
+        `;
+    }
+    
     if (email.analysis) {
         const a = email.analysis;
         const sentimentClass = a.sentiment === 'positive' ? 'positive' : 
@@ -1148,7 +1192,7 @@ function showEmailDetail(email) {
             <p>${email.subject}</p>
         </div>
         <div class="email-detail-section">
-            <h4>Nội dung</h4>
+            <h4>Nội dung đã gửi</h4>
             <div class="body-content">${email.body}</div>
         </div>
         <div class="email-detail-section">
@@ -1158,14 +1202,180 @@ function showEmailDetail(email) {
                 '<span class="status-badge pending"><i class="fas fa-clock"></i> Chờ phản hồi</span>'
             }</p>
         </div>
+        ${responseHtml}
         ${analysisHtml}
     `;
     
-    // Show/hide manual response button
+    // Show/hide buttons based on response status
     const manualBtn = document.getElementById('manual-response-btn');
-    manualBtn.style.display = email.response_received ? 'none' : 'inline-flex';
+    const replyBtn = document.getElementById('reply-email-btn');
+    
+    if (email.response_received) {
+        manualBtn.style.display = 'none';
+        replyBtn.style.display = 'inline-flex';
+    } else {
+        manualBtn.style.display = 'inline-flex';
+        replyBtn.style.display = 'none';
+    }
     
     modal.classList.add('active');
+}
+
+// ==================== Reply Email Functions ====================
+
+function openReplyModal() {
+    const email = window.currentEmailData;
+    if (!email) {
+        showToast('error', 'Lỗi', 'Không tìm thấy thông tin email');
+        return;
+    }
+    
+    // Close email detail modal
+    document.getElementById('email-modal').classList.remove('active');
+    
+    // Populate reply context
+    const replyContext = document.getElementById('reply-context');
+    replyContext.innerHTML = `
+        <h5><i class="fas fa-envelope"></i> Email gốc đã gửi</h5>
+        <div class="original-email">
+            <strong>Đến:</strong> ${email.recipient_name} (${email.recipient_email})<br>
+            <strong>Tiêu đề:</strong> ${email.subject}<br>
+            <strong>Nội dung:</strong><br>
+            <div style="margin-top: 8px; padding-left: 12px; border-left: 2px solid #ddd; font-size: 0.9rem;">
+                ${email.body ? email.body.substring(0, 300) + (email.body.length > 300 ? '...' : '') : ''}
+            </div>
+        </div>
+        ${email.response_body ? `
+            <div class="response-received">
+                <h6><i class="fas fa-reply"></i> Phản hồi từ ${email.recipient_name}</h6>
+                <div style="padding-left: 12px; border-left: 2px solid #10b981; font-size: 0.9rem;">
+                    ${email.response_body.substring(0, 300) + (email.response_body.length > 300 ? '...' : '')}
+                </div>
+            </div>
+        ` : ''}
+    `;
+    
+    // Clear previous values
+    document.getElementById('reply-purpose').value = '';
+    document.getElementById('reply-additional-context').value = '';
+    document.getElementById('reply-preview').style.display = 'none';
+    
+    // Open reply modal
+    document.getElementById('reply-modal').classList.add('active');
+}
+
+async function previewReplyEmail() {
+    const purpose = document.getElementById('reply-purpose').value.trim();
+    const additionalContext = document.getElementById('reply-additional-context').value.trim();
+    
+    if (!purpose) {
+        showToast('error', 'Thiếu thông tin', 'Vui lòng nhập mục đích trả lời');
+        return;
+    }
+    
+    const btn = document.getElementById('preview-reply-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo...';
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/emails/${currentEmailId}/preview-reply`, {
+            method: 'POST',
+            body: JSON.stringify({
+                purpose: purpose,
+                additional_context: additionalContext
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('reply-preview-subject').textContent = result.subject;
+            document.getElementById('reply-preview-body').textContent = result.body;
+            document.getElementById('reply-preview').style.display = 'block';
+            
+            // Store preview content for sending
+            window.replyPreviewData = {
+                subject: result.subject,
+                body: result.body
+            };
+        } else {
+            showToast('error', 'Lỗi', result.error || 'Không thể tạo email trả lời');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-eye"></i> Xem trước';
+    }
+}
+
+async function sendReplyEmail() {
+    const purpose = document.getElementById('reply-purpose').value.trim();
+    const additionalContext = document.getElementById('reply-additional-context').value.trim();
+    
+    if (!purpose && !window.replyPreviewData) {
+        showToast('error', 'Thiếu thông tin', 'Vui lòng nhập mục đích trả lời hoặc xem trước email');
+        return;
+    }
+    
+    const btn = document.getElementById('send-reply-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+    
+    try {
+        const payload = {
+            purpose: purpose,
+            additional_context: additionalContext
+        };
+        
+        // If preview was generated, include it
+        if (window.replyPreviewData) {
+            payload.custom_subject = window.replyPreviewData.subject;
+            payload.custom_body = window.replyPreviewData.body;
+        }
+        
+        const response = await authFetch(`${API_BASE}/api/emails/${currentEmailId}/reply`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showToast('success', 'Thành công!', 'Đã gửi email trả lời');
+            
+            // Close modal
+            document.getElementById('reply-modal').classList.remove('active');
+            
+            // Clear preview data
+            window.replyPreviewData = null;
+            
+            // Reload emails
+            loadEmails();
+            
+            addActivityLog('success', 'Trả lời Email', `Đã gửi trả lời đến ${window.currentEmailData?.recipient_name || 'người nhận'}`);
+        } else {
+            if (result.error_code === 'EMAIL_NOT_CONFIGURED') {
+                showToast('warning', 'Chưa cấu hình Email', result.error);
+                if (confirm('Bạn cần cấu hình Email gửi. Chuyển đến trang Hồ sơ?')) {
+                    document.getElementById('reply-modal').classList.remove('active');
+                    navigateTo('profile');
+                }
+            } else {
+                showToast('error', 'Lỗi', result.error || 'Không thể gửi email trả lời');
+            }
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Gửi trả lời';
+    }
+}
+
+function closeReplyModal() {
+    document.getElementById('reply-modal').classList.remove('active');
+    window.replyPreviewData = null;
 }
 
 async function analyzeManualResponse() {

@@ -270,6 +270,19 @@ class DatabaseServicePostgres:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cv_evaluations_status ON cv_evaluations(status)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id)")
             
+            # Migration: Add parent_email_id and thread_id for conversation threading
+            cursor.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'sent_emails' AND column_name = 'parent_email_id'
+            """)
+            if not cursor.fetchone():
+                logger.info("Adding conversation threading columns to sent_emails...")
+                cursor.execute("ALTER TABLE sent_emails ADD COLUMN parent_email_id INTEGER REFERENCES sent_emails(id)")
+                cursor.execute("ALTER TABLE sent_emails ADD COLUMN thread_id INTEGER")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_sent_emails_thread ON sent_emails(thread_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_sent_emails_parent ON sent_emails(parent_email_id)")
+                logger.info("Conversation threading columns added")
+            
             logger.info("PostgreSQL database initialized")
     
     # ==================== Raw Query Methods ====================
@@ -437,6 +450,78 @@ class DatabaseServicePostgres:
         else:
             result = self.query_raw("SELECT COUNT(*) as cnt FROM sent_emails", one=True)
         return result['cnt'] if result else 0
+
+    def get_conversation_thread(self, email_id: int) -> List[Dict]:
+        """Get all emails in a conversation thread"""
+        # First get the thread_id of this email
+        email = self.get_email_by_id(email_id)
+        if not email:
+            return []
+        
+        thread_id = email.get('thread_id') or email_id
+        
+        # Get all emails in this thread ordered by sent_at
+        query = """
+            SELECT se.*, r.response_body, r.response_subject as response_subject, 
+                   r.analysis, r.received_at as response_received_at
+            FROM sent_emails se
+            LEFT JOIN responses r ON se.id = r.sent_email_id
+            WHERE se.thread_id = %s OR se.id = %s OR se.parent_email_id = %s
+            ORDER BY se.sent_at ASC
+        """
+        return self.query_raw(query, (thread_id, thread_id, email_id))
+    
+    def save_reply_email(
+        self,
+        parent_email_id: int,
+        user_id: int,
+        sender_name: str,
+        sender_email: str,
+        recipient_name: str,
+        recipient_email: str,
+        subject: str,
+        body: str,
+        purpose: str,
+        message_id: str = None
+    ) -> int:
+        """Save a reply email linked to parent email"""
+        # Get the thread_id from parent email
+        parent = self.get_email_by_id(parent_email_id)
+        thread_id = parent.get('thread_id') or parent_email_id if parent else parent_email_id
+        
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """INSERT INTO sent_emails 
+                   (user_id, sender_name, sender_email, recipient_name, recipient_email, 
+                    subject, body, purpose, message_id, parent_email_id, thread_id, email_type)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'reply')
+                   RETURNING id""",
+                (user_id, sender_name, sender_email, recipient_name, recipient_email,
+                 subject, body, purpose, message_id, parent_email_id, thread_id)
+            )
+            email_id = cursor.fetchone()[0]
+            
+            # Update thread_id on parent if not set
+            if parent and not parent.get('thread_id'):
+                cursor.execute(
+                    "UPDATE sent_emails SET thread_id = %s WHERE id = %s",
+                    (parent_email_id, parent_email_id)
+                )
+            
+            return email_id
+    
+    def get_thread_summary(self, thread_id: int) -> Dict:
+        """Get summary of a conversation thread"""
+        query = """
+            SELECT COUNT(*) as total_emails,
+                   SUM(CASE WHEN response_received THEN 1 ELSE 0 END) as total_responses,
+                   MIN(sent_at) as started_at,
+                   MAX(sent_at) as last_activity
+            FROM sent_emails
+            WHERE thread_id = %s OR id = %s
+        """
+        return self.query_raw(query, (thread_id, thread_id), one=True)
 
     # ==================== CV Evaluation Methods ====================
     

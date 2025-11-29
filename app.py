@@ -707,6 +707,223 @@ def get_email(email_id):
         }), 500
 
 
+@app.route('/api/emails/<int:email_id>/thread', methods=['GET'])
+@login_required
+def get_email_thread(email_id):
+    """Get conversation thread for an email"""
+    try:
+        thread = database.get_conversation_thread(email_id)
+        
+        # Parse analysis JSON for each email in thread
+        for email in thread:
+            if email.get('analysis'):
+                try:
+                    email['analysis'] = json.loads(email['analysis'])
+                except:
+                    pass
+        
+        return jsonify({
+            "success": True,
+            "thread": thread,
+            "thread_count": len(thread)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/emails/<int:email_id>/reply', methods=['POST'])
+@login_required
+def reply_to_email(email_id):
+    """Reply to an email - continue conversation"""
+    try:
+        data = request.json
+        user_id = request.user.get('user_id')
+        
+        # Get user settings for email config
+        user_settings = database.get_user_settings(user_id) if user_id else None
+        
+        # Check if email is configured
+        if not user_settings or not user_settings.get('sender_email') or not user_settings.get('sender_password'):
+            return jsonify({
+                "success": False,
+                "error": "Bạn chưa cấu hình Email gửi. Vui lòng vào Hồ sơ để cấu hình trước khi gửi email.",
+                "error_code": "EMAIL_NOT_CONFIGURED"
+            }), 400
+        
+        # Get original email
+        original_email = database.get_email_by_id(email_id)
+        if not original_email:
+            return jsonify({
+                "success": False,
+                "error": "Email gốc không tồn tại"
+            }), 404
+        
+        purpose = data.get('purpose')
+        additional_context = data.get('additional_context')
+        custom_subject = data.get('custom_subject')
+        custom_body = data.get('custom_body')
+        
+        if not purpose and not custom_body:
+            return jsonify({
+                "success": False,
+                "error": "Vui lòng nhập mục đích trả lời hoặc nội dung email"
+            }), 400
+        
+        # Get user's AI agent
+        user_ai_agent = get_ai_agent_for_user(user_settings)
+        
+        # Get sender info from user settings
+        sender_email = user_settings.get('sender_email')
+        sender_name = original_email.get('sender_name', 'Người gửi')
+        
+        # Generate reply email if no custom content
+        if custom_subject and custom_body:
+            reply_subject = custom_subject
+            reply_body = custom_body
+        else:
+            # Build context for AI to understand the conversation
+            context = f"""
+Đây là email trả lời trong cuộc hội thoại.
+
+Email gốc đã gửi:
+- Tiêu đề: {original_email.get('subject')}
+- Nội dung: {original_email.get('body')}
+
+Phản hồi đã nhận được từ {original_email.get('recipient_name')}:
+{original_email.get('response_body', 'Chưa có nội dung phản hồi cụ thể')}
+
+{f'Thông tin thêm: {additional_context}' if additional_context else ''}
+"""
+            # Generate reply using AI
+            generated = user_ai_agent.generate_email(
+                sender_name=sender_name,
+                recipient_name=original_email.get('recipient_name'),
+                recipient_email=original_email.get('recipient_email'),
+                purpose=purpose,
+                tone='professional',
+                language='vi',
+                additional_context=context
+            )
+            
+            reply_subject = f"Re: {original_email.get('subject')}"
+            reply_body = generated.get('body', '')
+        
+        # Send the reply email
+        email_service_with_config = EmailService()
+        message_id = email_service_with_config.send_email_with_config(
+            sender_email=sender_email,
+            sender_password=user_settings.get('sender_password'),
+            recipient_email=original_email.get('recipient_email'),
+            subject=reply_subject,
+            body=reply_body,
+            smtp_host=user_settings.get('email_host', 'smtp.gmail.com'),
+            smtp_port=int(user_settings.get('email_port', 587))
+        )
+        
+        # Save reply to database
+        reply_id = database.save_reply_email(
+            parent_email_id=email_id,
+            user_id=user_id,
+            sender_name=sender_name,
+            sender_email=sender_email,
+            recipient_name=original_email.get('recipient_name'),
+            recipient_email=original_email.get('recipient_email'),
+            subject=reply_subject,
+            body=reply_body,
+            purpose=purpose or 'Trả lời email',
+            message_id=message_id
+        )
+        
+        return jsonify({
+            "success": True,
+            "message": "Đã gửi email trả lời thành công",
+            "email_id": reply_id,
+            "subject": reply_subject,
+            "body": reply_body
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/emails/<int:email_id>/preview-reply', methods=['POST'])
+@login_required
+def preview_reply_email(email_id):
+    """Preview AI-generated reply email"""
+    try:
+        data = request.json
+        user_id = request.user.get('user_id')
+        
+        # Get user settings
+        user_settings = database.get_user_settings(user_id) if user_id else None
+        
+        # Get original email
+        original_email = database.get_email_by_id(email_id)
+        if not original_email:
+            return jsonify({
+                "success": False,
+                "error": "Email gốc không tồn tại"
+            }), 404
+        
+        purpose = data.get('purpose')
+        additional_context = data.get('additional_context')
+        
+        if not purpose:
+            return jsonify({
+                "success": False,
+                "error": "Vui lòng nhập mục đích trả lời"
+            }), 400
+        
+        # Get user's AI agent
+        user_ai_agent = get_ai_agent_for_user(user_settings)
+        
+        sender_name = original_email.get('sender_name', 'Người gửi')
+        
+        # Build context for AI
+        context = f"""
+Đây là email trả lời trong cuộc hội thoại.
+
+Email gốc đã gửi:
+- Tiêu đề: {original_email.get('subject')}
+- Nội dung: {original_email.get('body')}
+
+Phản hồi đã nhận được từ {original_email.get('recipient_name')}:
+{original_email.get('response_body', 'Chưa có nội dung phản hồi cụ thể')}
+
+{f'Thông tin thêm: {additional_context}' if additional_context else ''}
+"""
+        
+        # Generate reply using AI
+        generated = user_ai_agent.generate_email(
+            sender_name=sender_name,
+            recipient_name=original_email.get('recipient_name'),
+            recipient_email=original_email.get('recipient_email'),
+            purpose=purpose,
+            tone='professional',
+            language='vi',
+            additional_context=context
+        )
+        
+        return jsonify({
+            "success": True,
+            "subject": f"Re: {original_email.get('subject')}",
+            "body": generated.get('body', '')
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 @app.route('/api/emails/<int:email_id>', methods=['DELETE'])
 @login_required
 def delete_email(email_id):
