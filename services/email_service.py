@@ -35,6 +35,10 @@ class EmailService:
     def __init__(self):
         self.sender_email = SENDER_EMAIL or ""
         self.sender_password = SENDER_PASSWORD or ""
+        self.smtp_host = EMAIL_HOST
+        self.smtp_port = EMAIL_PORT
+        self.imap_host = IMAP_HOST
+        self.imap_port = IMAP_PORT
         self._imap_available = None  # Cache IMAP availability
         
     def send_email(
@@ -76,8 +80,8 @@ class EmailService:
                 for attachment in attachments:
                     self._add_attachment(message, attachment)
             
-            # Connect and send
-            with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
+            # Connect and send using instance's SMTP settings
+            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
                 server.starttls()
                 server.login(self.sender_email, self.sender_password)
                 server.sendmail(

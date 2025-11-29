@@ -400,7 +400,18 @@ def send_email():
         
         # Get user settings for email
         user_settings = database.get_user_settings(request.current_user['id'])
-        sender_email_config = user_settings.get('sender_email') if user_settings else SENDER_EMAIL
+        
+        # Create email service with user's settings if available
+        if user_settings and user_settings.get('sender_email') and user_settings.get('sender_password'):
+            user_email_service = EmailService()
+            user_email_service.sender_email = user_settings.get('sender_email')
+            user_email_service.sender_password = user_settings.get('sender_password')
+            user_email_service.smtp_host = user_settings.get('email_host', 'smtp.gmail.com')
+            user_email_service.smtp_port = int(user_settings.get('email_port', 587))
+            sender_email_config = user_settings.get('sender_email')
+        else:
+            user_email_service = email_service
+            sender_email_config = SENDER_EMAIL
         
         sender_name = data.get('sender_name')
         recipient_name = data.get('recipient_name')
@@ -454,8 +465,8 @@ def send_email():
                     'content_type': content_type
                 })
         
-        # Send the email with attachments
-        success = email_service.send_email(
+        # Send the email with attachments using user's email service
+        success = user_email_service.send_email(
             recipient_email=recipient_email,
             subject=generated_email['subject'],
             body=generated_email['body'],
