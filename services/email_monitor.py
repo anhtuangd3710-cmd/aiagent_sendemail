@@ -16,6 +16,35 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
+def parse_datetime(value) -> datetime:
+    """Parse datetime from various formats (string or datetime object)"""
+    if value is None:
+        return datetime.now()
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        # Try different formats
+        for fmt in [
+            "%Y-%m-%d %H:%M:%S.%f",
+            "%Y-%m-%d %H:%M:%S",
+            "%Y-%m-%dT%H:%M:%S.%f",
+            "%Y-%m-%dT%H:%M:%S",
+            "%Y-%m-%d"
+        ]:
+            try:
+                return datetime.strptime(value, fmt)
+            except ValueError:
+                continue
+        # Try fromisoformat as last resort
+        try:
+            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+        except:
+            pass
+    # Default to now if all parsing fails
+    logger.warning(f"Could not parse datetime: {value}, using current time")
+    return datetime.now()
+
+
 class EmailMonitor:
     """Service that monitors for email responses and processes them"""
     
@@ -113,7 +142,7 @@ class EmailMonitor:
     def _process_email_responses_with_details(self, email_record: dict) -> Dict:
         """Process responses for a specific sent email and return details"""
         recipient_email = email_record['recipient_email']
-        sent_date = datetime.fromisoformat(email_record['sent_at'])
+        sent_date = parse_datetime(email_record['sent_at'])
         
         result = {
             "email_id": email_record['id'],
@@ -164,7 +193,7 @@ class EmailMonitor:
     def _process_email_responses(self, email_record: dict):
         """Process responses for a specific sent email"""
         recipient_email = email_record['recipient_email']
-        sent_date = datetime.fromisoformat(email_record['sent_at'])
+        sent_date = parse_datetime(email_record['sent_at'])
         
         # Get responses from the recipient
         responses = self.email_service.get_responses(
