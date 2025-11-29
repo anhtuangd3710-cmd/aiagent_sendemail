@@ -812,17 +812,24 @@ Phản hồi đã nhận được từ {original_email.get('recipient_name')}:
             reply_subject = f"Re: {original_email.get('subject')}"
             reply_body = generated.get('body', '')
         
-        # Send the reply email
-        email_service_with_config = EmailService()
-        message_id = email_service_with_config.send_email_with_config(
-            sender_email=sender_email,
-            sender_password=user_settings.get('sender_password'),
+        # Send the reply email using user's email config
+        reply_email_service = EmailService()
+        reply_email_service.sender_email = sender_email
+        reply_email_service.sender_password = user_settings.get('sender_password')
+        reply_email_service.smtp_host = user_settings.get('email_host', 'smtp.gmail.com')
+        reply_email_service.smtp_port = int(user_settings.get('email_port', 587))
+        
+        send_success = reply_email_service.send_email(
             recipient_email=original_email.get('recipient_email'),
             subject=reply_subject,
-            body=reply_body,
-            smtp_host=user_settings.get('email_host', 'smtp.gmail.com'),
-            smtp_port=int(user_settings.get('email_port', 587))
+            body=reply_body
         )
+        
+        if not send_success:
+            return jsonify({
+                "success": False,
+                "error": "Không thể gửi email trả lời. Vui lòng kiểm tra cấu hình email."
+            }), 500
         
         # Save reply to database
         reply_id = database.save_reply_email(
@@ -835,7 +842,7 @@ Phản hồi đã nhận được từ {original_email.get('recipient_name')}:
             subject=reply_subject,
             body=reply_body,
             purpose=purpose or 'Trả lời email',
-            message_id=message_id
+            message_id=None  # send_email doesn't return message_id
         )
         
         return jsonify({
