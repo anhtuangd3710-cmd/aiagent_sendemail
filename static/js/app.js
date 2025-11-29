@@ -593,6 +593,46 @@ async function loadEmails() {
     }
 }
 
+function groupEmailsByThread(emailList) {
+    // Group emails by thread_id or by parent relationship
+    const threads = {};
+    const rootEmails = [];
+    
+    emailList.forEach(email => {
+        const threadId = email.thread_id || email.id;
+        
+        if (!email.parent_email_id) {
+            // This is a root email
+            if (!threads[threadId]) {
+                threads[threadId] = {
+                    root: email,
+                    replies: []
+                };
+            } else {
+                threads[threadId].root = email;
+            }
+            rootEmails.push(threadId);
+        } else {
+            // This is a reply
+            const parentThreadId = email.thread_id || email.parent_email_id;
+            if (!threads[parentThreadId]) {
+                threads[parentThreadId] = {
+                    root: null,
+                    replies: []
+                };
+            }
+            threads[parentThreadId].replies.push(email);
+        }
+    });
+    
+    // Sort replies by sent_at
+    Object.values(threads).forEach(thread => {
+        thread.replies.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
+    });
+    
+    return { threads, rootEmails };
+}
+
 function renderEmails() {
     const emailList = document.getElementById('email-list');
     const emptyState = document.getElementById('empty-state');
@@ -616,7 +656,7 @@ function renderEmails() {
     });
     
     // Clear list (except empty state)
-    const items = emailList.querySelectorAll('.email-item');
+    const items = emailList.querySelectorAll('.email-item, .email-thread');
     items.forEach(item => item.remove());
     
     if (filteredEmails.length === 0) {
@@ -626,48 +666,194 @@ function renderEmails() {
     
     emptyState.style.display = 'none';
     
-    // Render emails
-    filteredEmails.forEach(email => {
-        const item = createEmailItem(email);
-        emailList.insertBefore(item, emptyState);
+    // Group emails by thread
+    const { threads } = groupEmailsByThread(filteredEmails);
+    
+    // Sort threads by most recent activity
+    const sortedThreads = Object.entries(threads).sort((a, b) => {
+        const aLatest = a[1].replies.length > 0 
+            ? new Date(a[1].replies[a[1].replies.length - 1].sent_at)
+            : (a[1].root ? new Date(a[1].root.sent_at) : new Date(0));
+        const bLatest = b[1].replies.length > 0 
+            ? new Date(b[1].replies[b[1].replies.length - 1].sent_at)
+            : (b[1].root ? new Date(b[1].root.sent_at) : new Date(0));
+        return bLatest - aLatest;
+    });
+    
+    // Render threads
+    sortedThreads.forEach(([threadId, thread]) => {
+        if (thread.root) {
+            const threadElement = createEmailThread(thread);
+            emailList.insertBefore(threadElement, emptyState);
+        } else if (thread.replies.length > 0) {
+            // Orphan replies (shouldn't happen often)
+            thread.replies.forEach(reply => {
+                const item = createEmailItem(reply, true);
+                emailList.insertBefore(item, emptyState);
+            });
+        }
     });
 }
 
-function createEmailItem(email) {
+function createEmailThread(thread) {
+    const { root, replies } = thread;
+    const hasReplies = replies.length > 0;
+    const totalInThread = 1 + replies.length;
+    
+    // Create thread container
+    const threadContainer = document.createElement('div');
+    threadContainer.className = 'email-thread';
+    
+    // Determine thread status
+    const allEmails = [root, ...replies];
+    const lastEmail = allEmails[allEmails.length - 1];
+    const hasAnyResponse = allEmails.some(e => e.response_received);
+    const pendingResponse = !lastEmail.response_received;
+    
+    // Thread header with summary
+    let threadStatus = '';
+    if (pendingResponse) {
+        threadStatus = `<span class="thread-status pending"><i class="fas fa-clock"></i> Chờ phản hồi</span>`;
+    } else {
+        threadStatus = `<span class="thread-status responded"><i class="fas fa-check-circle"></i> Đã có phản hồi</span>`;
+    }
+    
+    const threadBadge = hasReplies 
+        ? `<span class="thread-badge"><i class="fas fa-comments"></i> ${totalInThread} tin nhắn</span>` 
+        : '';
+    
+    // Create root email item
+    const rootItem = createEmailItem(root, false, hasReplies);
+    rootItem.classList.add('thread-root');
+    
+    // Add thread indicator if has replies
+    if (hasReplies) {
+        rootItem.innerHTML = `
+            <div class="thread-indicator">
+                <div class="thread-line"></div>
+            </div>
+        ` + rootItem.innerHTML;
+    }
+    
+    threadContainer.appendChild(rootItem);
+    
+    // Create replies container (collapsible)
+    if (hasReplies) {
+        const repliesContainer = document.createElement('div');
+        repliesContainer.className = 'thread-replies';
+        
+        replies.forEach((reply, index) => {
+            const replyItem = createEmailItem(reply, true, index < replies.length - 1);
+            replyItem.classList.add('thread-reply');
+            repliesContainer.appendChild(replyItem);
+        });
+        
+        threadContainer.appendChild(repliesContainer);
+    }
+    
+    return threadContainer;
+}
+
+function createEmailItem(email, isReply = false, hasMoreReplies = false) {
     const item = document.createElement('div');
-    item.className = 'email-item';
+    item.className = 'email-item' + (isReply ? ' is-reply' : '');
     item.onclick = () => showEmailDetail(email);
     
     const initials = email.recipient_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-    const date = new Date(email.sent_at).toLocaleDateString('vi-VN');
+    const date = new Date(email.sent_at).toLocaleDateString('vi-VN', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
     
-    let statusBadge = '';
+    // Determine status
+    let statusHtml = '';
+    let responsePreview = '';
+    
     if (email.response_received) {
         const analysis = email.analysis;
+        const sentiment = analysis?.sentiment || 'neutral';
         const decision = analysis?.decision || 'responded';
+        
+        const sentimentIcons = {
+            'positive': '<i class="fas fa-smile text-success"></i>',
+            'tích cực': '<i class="fas fa-smile text-success"></i>',
+            'negative': '<i class="fas fa-frown text-danger"></i>',
+            'tiêu cực': '<i class="fas fa-frown text-danger"></i>',
+            'neutral': '<i class="fas fa-meh text-warning"></i>',
+            'trung tính': '<i class="fas fa-meh text-warning"></i>'
+        };
+        
         const decisionText = {
             'agreed': 'Đồng ý',
-            'disagreed': 'Không đồng ý',
+            'đồng ý': 'Đồng ý',
+            'disagreed': 'Từ chối',
+            'không đồng ý': 'Từ chối',
             'undecided': 'Chưa quyết định',
-            'needs_more_info': 'Cần thêm thông tin'
-        }[decision] || 'Đã phản hồi';
+            'chưa quyết định': 'Chưa quyết định',
+            'needs_more_info': 'Cần thêm thông tin',
+            'cần thêm thông tin': 'Cần thêm thông tin'
+        }[decision?.toLowerCase()] || 'Đã phản hồi';
         
-        statusBadge = `<span class="status-badge ${decision}">${decisionText}</span>`;
+        const sentimentIcon = sentimentIcons[sentiment?.toLowerCase()] || sentimentIcons['neutral'];
+        
+        statusHtml = `
+            <div class="email-response-status has-response">
+                <div class="response-indicator">
+                    ${sentimentIcon}
+                    <span class="response-decision">${decisionText}</span>
+                </div>
+                <span class="status-badge responded"><i class="fas fa-envelope-open"></i> Đã phản hồi</span>
+            </div>
+        `;
+        
+        // Show response preview
+        if (email.response_body) {
+            const preview = email.response_body.substring(0, 80) + (email.response_body.length > 80 ? '...' : '');
+            responsePreview = `
+                <div class="response-preview">
+                    <i class="fas fa-reply"></i>
+                    <span>${preview}</span>
+                </div>
+            `;
+        }
     } else {
-        statusBadge = '<span class="status-badge pending"><i class="fas fa-clock"></i> Chờ phản hồi</span>';
+        statusHtml = `
+            <div class="email-response-status no-response">
+                <span class="status-badge pending"><i class="fas fa-clock"></i> Chờ phản hồi</span>
+            </div>
+        `;
     }
     
+    // Email type indicator
+    const typeIndicator = isReply 
+        ? '<span class="email-type-badge reply"><i class="fas fa-reply"></i> Trả lời</span>'
+        : (email.email_type === 'reply' 
+            ? '<span class="email-type-badge reply"><i class="fas fa-reply"></i> Trả lời</span>'
+            : '<span class="email-type-badge original"><i class="fas fa-paper-plane"></i> Gửi mới</span>');
+    
     item.innerHTML = `
-        <div class="email-avatar">${initials}</div>
-        <div class="email-content">
-            <div class="email-header">
-                <span class="email-recipient">${email.recipient_name}</span>
-                <span class="email-date">${date}</span>
+        <div class="email-item-left">
+            <div class="email-avatar ${email.response_received ? 'has-response' : ''}">${initials}</div>
+            ${hasMoreReplies ? '<div class="thread-connector"></div>' : ''}
+        </div>
+        <div class="email-item-main">
+            <div class="email-item-header">
+                <div class="email-recipient-info">
+                    <span class="email-recipient">${email.recipient_name}</span>
+                    <span class="email-recipient-email">${email.recipient_email}</span>
+                </div>
+                <div class="email-meta">
+                    ${typeIndicator}
+                    <span class="email-date">${date}</span>
+                </div>
             </div>
             <div class="email-subject">${email.subject}</div>
             <div class="email-purpose">${email.purpose}</div>
+            ${responsePreview}
+            ${statusHtml}
         </div>
-        <div class="email-status">${statusBadge}</div>
     `;
     
     return item;
