@@ -225,16 +225,27 @@ class DatabaseServicePostgres:
             """)
             
             # User settings table (for storing API keys, email settings per user)
+            # Structure compatible with SQLite version
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS user_settings (
                     id SERIAL PRIMARY KEY,
-                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-                    setting_key VARCHAR(100) NOT NULL,
-                    setting_value TEXT,
-                    encrypted BOOLEAN DEFAULT FALSE,
+                    user_id INTEGER UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    ai_provider VARCHAR(50) DEFAULT 'azure',
+                    azure_openai_endpoint TEXT,
+                    azure_openai_api_key TEXT,
+                    azure_openai_deployment_name TEXT,
+                    azure_openai_api_version VARCHAR(50) DEFAULT '2024-02-15-preview',
+                    gemini_api_key TEXT,
+                    gemini_model VARCHAR(100) DEFAULT 'gemini-1.5-flash',
+                    sender_email VARCHAR(255),
+                    sender_password TEXT,
+                    email_host VARCHAR(255) DEFAULT 'smtp.gmail.com',
+                    email_port INTEGER DEFAULT 587,
+                    imap_host VARCHAR(255) DEFAULT 'imap.gmail.com',
+                    imap_port INTEGER DEFAULT 993,
+                    check_interval INTEGER DEFAULT 10,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(user_id, setting_key)
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
@@ -610,42 +621,83 @@ class DatabaseServicePostgres:
     
     # ==================== User Settings Methods ====================
     
-    def get_user_settings(self, user_id: int) -> Dict[str, str]:
-        """Get all settings for a user"""
-        rows = self.query_raw(
-            "SELECT setting_key, setting_value FROM user_settings WHERE user_id = %s",
-            (user_id,)
-        )
-        return {row['setting_key']: row['setting_value'] for row in rows} if rows else {}
-    
-    def get_user_setting(self, user_id: int, setting_key: str) -> Optional[str]:
-        """Get a specific setting for a user"""
+    def get_user_settings(self, user_id: int) -> Optional[Dict]:
+        """Get all settings for a user - compatible with SQLite version"""
         result = self.query_raw(
-            "SELECT setting_value FROM user_settings WHERE user_id = %s AND setting_key = %s",
-            (user_id, setting_key),
+            "SELECT * FROM user_settings WHERE user_id = %s",
+            (user_id,),
             one=True
         )
-        return result['setting_value'] if result else None
+        return dict(result) if result else None
     
-    def save_user_setting(self, user_id: int, setting_key: str, setting_value: str, encrypted: bool = False):
-        """Save or update a user setting (upsert)"""
-        # PostgreSQL upsert with ON CONFLICT
-        self.execute_raw(
-            """INSERT INTO user_settings (user_id, setting_key, setting_value, encrypted, updated_at)
-               VALUES (%s, %s, %s, %s, %s)
-               ON CONFLICT (user_id, setting_key) 
-               DO UPDATE SET setting_value = EXCLUDED.setting_value, 
-                            encrypted = EXCLUDED.encrypted,
-                            updated_at = EXCLUDED.updated_at""",
-            (user_id, setting_key, setting_value, encrypted, datetime.now().isoformat())
-        )
+    def save_user_settings(self, user_id: int, settings: Dict) -> int:
+        """Save or update user settings - compatible with SQLite version"""
+        existing = self.get_user_settings(user_id)
+        
+        if existing:
+            # Update existing settings
+            update_fields = []
+            values = []
+            
+            allowed_fields = [
+                'ai_provider', 'azure_openai_endpoint', 'azure_openai_api_key',
+                'azure_openai_deployment_name', 'azure_openai_api_version',
+                'gemini_api_key', 'gemini_model',
+                'sender_email', 'sender_password',
+                'email_host', 'email_port', 'imap_host', 'imap_port',
+                'check_interval'
+            ]
+            
+            for field in allowed_fields:
+                if field in settings:
+                    update_fields.append(f"{field} = %s")
+                    values.append(settings[field])
+            
+            if update_fields:
+                update_fields.append("updated_at = %s")
+                values.append(datetime.now().isoformat())
+                values.append(user_id)
+                
+                self.execute_raw(f"""
+                    UPDATE user_settings 
+                    SET {', '.join(update_fields)}
+                    WHERE user_id = %s
+                """, tuple(values))
+                return existing['id']
+            return existing['id']
+        else:
+            # Insert new settings
+            return self.insert_raw("""
+                INSERT INTO user_settings (
+                    user_id, ai_provider,
+                    azure_openai_endpoint, azure_openai_api_key,
+                    azure_openai_deployment_name, azure_openai_api_version,
+                    gemini_api_key, gemini_model,
+                    sender_email, sender_password,
+                    email_host, email_port, imap_host, imap_port,
+                    check_interval
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                user_id,
+                settings.get('ai_provider', 'azure'),
+                settings.get('azure_openai_endpoint'),
+                settings.get('azure_openai_api_key'),
+                settings.get('azure_openai_deployment_name'),
+                settings.get('azure_openai_api_version', '2024-02-15-preview'),
+                settings.get('gemini_api_key'),
+                settings.get('gemini_model', 'gemini-1.5-flash'),
+                settings.get('sender_email'),
+                settings.get('sender_password'),
+                settings.get('email_host', 'smtp.gmail.com'),
+                settings.get('email_port', 587),
+                settings.get('imap_host', 'imap.gmail.com'),
+                settings.get('imap_port', 993),
+                settings.get('check_interval', 10)
+            ))
     
-    def delete_user_setting(self, user_id: int, setting_key: str):
-        """Delete a user setting"""
-        self.execute_raw(
-            "DELETE FROM user_settings WHERE user_id = %s AND setting_key = %s",
-            (user_id, setting_key)
-        )
+    def delete_user_settings(self, user_id: int):
+        """Delete user settings"""
+        self.execute_raw("DELETE FROM user_settings WHERE user_id = %s", (user_id,))
     
     def close(self):
         """Close all connections"""

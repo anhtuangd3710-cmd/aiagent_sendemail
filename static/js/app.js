@@ -1041,8 +1041,9 @@ function connectWebSocket() {
         socket = io(window.location.origin, {
             transports: ['websocket', 'polling'],
             reconnection: true,
-            reconnectionAttempts: 10,
-            reconnectionDelay: 1000
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 10000
         });
         
         socket.on('connect', () => {
@@ -1050,12 +1051,16 @@ function connectWebSocket() {
             console.log('🔌 WebSocket connected');
             updateConnectionStatus(true);
             addActivityLog('success', 'Realtime kết nối', 'Kết nối WebSocket thành công');
+            // Stop polling if WebSocket is connected
+            stopPolling();
         });
         
         socket.on('disconnect', () => {
             wsConnected = false;
             console.log('🔌 WebSocket disconnected');
             updateConnectionStatus(false);
+            // Start polling as fallback
+            startPolling();
         });
         
         socket.on('connected', (data) => {
@@ -1082,25 +1087,33 @@ function connectWebSocket() {
         });
         
         socket.on('connect_error', (error) => {
-            console.log('WebSocket connection error, falling back to SSE:', error);
-            // Fallback to SSE if WebSocket fails
-            initEventSource();
+            console.log('WebSocket connection error, using polling fallback:', error);
+            wsConnected = false;
+            updateConnectionStatus(false);
+            // Start polling as fallback for Vercel (no WebSocket support)
+            startPolling();
         });
         
     } catch (error) {
         console.error('WebSocket initialization failed:', error);
-        // Fallback to SSE
-        initEventSource();
+        // Start polling as fallback
+        startPolling();
     }
 }
 
-function updateConnectionStatus(connected) {
+function updateConnectionStatus(connected, mode = null) {
     const statusElement = document.getElementById('ws-status');
     if (statusElement) {
-        statusElement.className = `ws-status ${connected ? 'connected' : 'disconnected'}`;
-        statusElement.innerHTML = connected 
-            ? '<i class="fas fa-wifi"></i> Realtime' 
-            : '<i class="fas fa-wifi"></i> Offline';
+        if (connected) {
+            statusElement.className = 'ws-status connected';
+            statusElement.innerHTML = '<i class="fas fa-wifi"></i> Realtime';
+        } else if (mode === 'Polling') {
+            statusElement.className = 'ws-status polling';
+            statusElement.innerHTML = '<i class="fas fa-sync-alt"></i> Polling';
+        } else {
+            statusElement.className = 'ws-status disconnected';
+            statusElement.innerHTML = '<i class="fas fa-wifi"></i> Offline';
+        }
     }
 }
 
@@ -1127,6 +1140,93 @@ function handleCvEvaluated(data) {
 }
 
 // ==================== Server-Sent Events (Fallback) ====================
+
+// Polling fallback for Vercel (no WebSocket/SSE support)
+let pollingInterval = null;
+let lastEmailCount = 0;
+let lastCvCount = 0;
+
+function startPolling() {
+    if (pollingInterval) return; // Already polling
+    
+    console.log('📡 Starting polling fallback (WebSocket unavailable)');
+    updateConnectionStatus(false, 'Polling');
+    
+    // Poll every 30 seconds
+    pollingInterval = setInterval(async () => {
+        await pollForUpdates();
+    }, 30000);
+    
+    // Initial poll
+    pollForUpdates();
+}
+
+function stopPolling() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('📡 Polling stopped (WebSocket connected)');
+    }
+}
+
+async function pollForUpdates() {
+    try {
+        // Check for new emails/responses
+        const emailResponse = await authFetch(`${API_BASE}/api/emails`);
+        const emailResult = await emailResponse.json();
+        
+        if (emailResult.success) {
+            const currentEmailCount = emailResult.emails.length;
+            const respondedCount = emailResult.emails.filter(e => e.response_received).length;
+            
+            // Check if there are new responses
+            if (currentEmailCount > 0) {
+                const newResponses = emailResult.emails.filter(e => 
+                    e.response_received && 
+                    e.response_received_at && 
+                    isRecentResponse(e.response_received_at)
+                );
+                
+                if (newResponses.length > 0 && emails.length > 0) {
+                    // Find truly new responses
+                    const oldRespondedIds = emails.filter(e => e.response_received).map(e => e.id);
+                    const newlyResponded = newResponses.filter(e => !oldRespondedIds.includes(e.id));
+                    
+                    newlyResponded.forEach(email => {
+                        handleResponseReceived({
+                            recipient_name: email.recipient_name,
+                            analysis: email.analysis || { decision: 'responded' }
+                        });
+                    });
+                }
+            }
+            
+            emails = emailResult.emails;
+            renderEmails();
+            updatePendingCount();
+        }
+        
+        // Check for new CV evaluations
+        const cvResponse = await authFetch(`${API_BASE}/api/cv-evaluations`);
+        const cvResult = await cvResponse.json();
+        
+        if (cvResult.success && cvResult.evaluations.length > lastCvCount) {
+            lastCvCount = cvResult.evaluations.length;
+            loadCvEvaluations();
+        }
+        
+    } catch (error) {
+        console.error('Polling error:', error);
+    }
+}
+
+function isRecentResponse(timestamp) {
+    if (!timestamp) return false;
+    const responseTime = new Date(timestamp);
+    const now = new Date();
+    const diffMinutes = (now - responseTime) / (1000 * 60);
+    return diffMinutes < 5; // Consider responses within last 5 minutes as "recent"
+}
 
 function initEventSource() {
     if (wsConnected) return; // Skip if WebSocket is working

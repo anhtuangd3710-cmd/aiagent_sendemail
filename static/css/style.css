@@ -1303,6 +1303,24 @@ body {
     color: var(--danger-color);
 }
 
+.ws-status.polling {
+    background: var(--warning-light);
+    color: var(--warning-color);
+}
+
+.ws-status.polling i {
+    animation: spin 2s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 @keyframes pulse {
     0%, 100% {
         opacity: 1;
