@@ -625,7 +625,7 @@ def preview_email():
             }), 400
         
         # Get user settings to check for custom API key
-        user_id = request.user.get('user_id')
+        user_id = request.current_user.get('user_id')
         user_settings = database.get_user_settings(user_id) if user_id else None
         
         # Use user's AI agent if they have custom API key, otherwise use default
@@ -741,7 +741,7 @@ def reply_to_email(email_id):
     """Reply to an email - continue conversation"""
     try:
         data = request.json
-        user_id = request.user.get('user_id')
+        user_id = request.current_user.get('user_id')
         
         # Get user settings for email config
         user_settings = database.get_user_settings(user_id) if user_id else None
@@ -859,7 +859,7 @@ def preview_reply_email(email_id):
     """Preview AI-generated reply email"""
     try:
         data = request.json
-        user_id = request.user.get('user_id')
+        user_id = request.current_user.get('user_id')
         
         # Get user settings
         user_settings = database.get_user_settings(user_id) if user_id else None
@@ -1440,7 +1440,7 @@ def evaluate_cv():
             }), 400
         
         # Get user settings to check for custom API key
-        user_id = request.user.get('user_id')
+        user_id = request.current_user.get('user_id')
         user_settings = database.get_user_settings(user_id) if user_id else None
         
         # Use user's CV evaluator if they have custom API key
@@ -1689,7 +1689,7 @@ def preview_cv_email():
         interview_details = data.get('interview_details')
         
         # Get user settings to check for custom API key
-        user_id = request.user.get('user_id')
+        user_id = request.current_user.get('user_id')
         user_settings = database.get_user_settings(user_id) if user_id else None
         
         # Use user's CV evaluator if they have custom API key
