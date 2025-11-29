@@ -26,7 +26,7 @@ AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-pre
 # Google Gemini Configuration
 # ===========================================
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 # Available models: gemini-1.5-flash, gemini-1.5-pro, gemini-pro
 
 # ===========================================

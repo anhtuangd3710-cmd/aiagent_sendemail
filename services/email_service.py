@@ -33,8 +33,8 @@ class EmailService:
     """Service for sending and receiving emails"""
     
     def __init__(self):
-        self.sender_email = SENDER_EMAIL
-        self.sender_password = SENDER_PASSWORD
+        self.sender_email = SENDER_EMAIL or ""
+        self.sender_password = SENDER_PASSWORD or ""
         self._imap_available = None  # Cache IMAP availability
         
     def send_email(
@@ -228,6 +228,15 @@ class EmailService:
         Returns:
             Dict with 'success', 'message', and 'details'
         """
+        # Check if credentials are configured
+        if not self.sender_email or not self.sender_password:
+            self._imap_available = False
+            return {
+                "success": False,
+                "message": "Email not configured",
+                "details": "Vui lòng cấu hình Email và App Password trong phần Profile/Cài đặt."
+            }
+        
         try:
             logger.info(f"Testing IMAP connection to {IMAP_HOST}:{IMAP_PORT}...")
             mail = imaplib.IMAP4_SSL(IMAP_HOST, IMAP_PORT, timeout=15)
