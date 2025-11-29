@@ -252,12 +252,16 @@ class DatabaseServicePostgres:
     
     def execute_raw(self, query: str, params: tuple = None):
         """Execute a raw SQL query"""
+        # Convert SQLite ? placeholders to PostgreSQL %s
+        query = query.replace('?', '%s')
         with self.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(query, params or ())
     
     def query_raw(self, query: str, params: tuple = None, one: bool = False) -> Optional[Any]:
         """Execute a query and return results"""
+        # Convert SQLite ? placeholders to PostgreSQL %s
+        query = query.replace('?', '%s')
         with self.get_connection() as conn:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
             cursor.execute(query, params or ())
@@ -269,6 +273,8 @@ class DatabaseServicePostgres:
     
     def insert_raw(self, query: str, params: tuple = None) -> int:
         """Execute an insert and return the ID"""
+        # Convert SQLite ? placeholders to PostgreSQL %s
+        query = query.replace('?', '%s')
         with self.get_connection() as conn:
             cursor = conn.cursor()
             # Add RETURNING id if not present
