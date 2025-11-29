@@ -381,8 +381,14 @@ class DatabaseServicePostgres:
         
         return response_id
     
-    def get_email_by_id(self, email_id: int) -> Optional[Dict]:
-        """Get email by ID"""
+    def get_email_by_id(self, email_id: int, user_id: Optional[int] = None) -> Optional[Dict]:
+        """Get email by ID, optionally filtered by user_id for security"""
+        if user_id:
+            return self.query_raw(
+                "SELECT * FROM sent_emails WHERE id = %s AND user_id = %s",
+                (email_id, user_id),
+                one=True
+            )
         return self.query_raw(
             "SELECT * FROM sent_emails WHERE id = %s",
             (email_id,),
@@ -419,21 +425,46 @@ class DatabaseServicePostgres:
         # Sort by sent_at descending after DISTINCT ON
         return sorted(results, key=lambda x: x.get('sent_at', ''), reverse=True)
     
-    def delete_email(self, email_id: int):
-        """Delete a sent email and its responses"""
+    def delete_email(self, email_id: int, user_id: Optional[int] = None):
+        """Delete a sent email and its responses, optionally filtered by user_id"""
+        if user_id:
+            # Verify ownership before deleting
+            email = self.get_email_by_id(email_id, user_id)
+            if not email:
+                return False
         self.execute_raw("DELETE FROM responses WHERE sent_email_id = %s", (email_id,))
         self.execute_raw("DELETE FROM sent_emails WHERE id = %s", (email_id,))
+        return True
     
-    def delete_emails(self, email_ids: List[int]) -> int:
-        """Delete multiple emails by IDs"""
+    def delete_emails(self, email_ids: List[int], user_id: Optional[int] = None) -> int:
+        """Delete multiple emails by IDs, optionally filtered by user_id"""
         if not email_ids:
             return 0
-        placeholders = ','.join(['%s'] * len(email_ids))
-        self.execute_raw(f"DELETE FROM responses WHERE sent_email_id IN ({placeholders})", tuple(email_ids))
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(f"DELETE FROM sent_emails WHERE id IN ({placeholders})", tuple(email_ids))
-            return cursor.rowcount
+        
+        if user_id:
+            # Only delete emails that belong to this user
+            placeholders = ','.join(['%s'] * len(email_ids))
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Get IDs that belong to this user
+                cursor.execute(
+                    f"SELECT id FROM sent_emails WHERE id IN ({placeholders}) AND user_id = %s",
+                    tuple(email_ids) + (user_id,)
+                )
+                valid_ids = [row[0] for row in cursor.fetchall()]
+                if not valid_ids:
+                    return 0
+                valid_placeholders = ','.join(['%s'] * len(valid_ids))
+                cursor.execute(f"DELETE FROM responses WHERE sent_email_id IN ({valid_placeholders})", tuple(valid_ids))
+                cursor.execute(f"DELETE FROM sent_emails WHERE id IN ({valid_placeholders})", tuple(valid_ids))
+                return len(valid_ids)
+        else:
+            placeholders = ','.join(['%s'] * len(email_ids))
+            self.execute_raw(f"DELETE FROM responses WHERE sent_email_id IN ({placeholders})", tuple(email_ids))
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"DELETE FROM sent_emails WHERE id IN ({placeholders})", tuple(email_ids))
+                return cursor.rowcount
     
     def delete_all_emails(self, user_id: Optional[int] = None) -> int:
         """Delete all sent emails and responses"""
@@ -459,10 +490,10 @@ class DatabaseServicePostgres:
             result = self.query_raw("SELECT COUNT(*) as cnt FROM sent_emails", one=True)
         return result['cnt'] if result else 0
 
-    def get_conversation_thread(self, email_id: int) -> List[Dict]:
+    def get_conversation_thread(self, email_id: int, user_id: Optional[int] = None) -> List[Dict]:
         """Get all emails in a conversation thread"""
-        # First get the thread_id of this email
-        email = self.get_email_by_id(email_id)
+        # First get the thread_id of this email (with user_id check)
+        email = self.get_email_by_id(email_id, user_id)
         if not email:
             return []
         
@@ -474,10 +505,16 @@ class DatabaseServicePostgres:
                    r.analysis, r.received_at as response_received_at
             FROM sent_emails se
             LEFT JOIN responses r ON se.id = r.sent_email_id
-            WHERE se.thread_id = %s OR se.id = %s OR se.parent_email_id = %s
-            ORDER BY se.sent_at ASC
+            WHERE (se.thread_id = %s OR se.id = %s OR se.parent_email_id = %s)
         """
-        return self.query_raw(query, (thread_id, thread_id, email_id))
+        params = [thread_id, thread_id, email_id]
+        
+        if user_id:
+            query += " AND se.user_id = %s"
+            params.append(user_id)
+        
+        query += " ORDER BY se.sent_at ASC"
+        return self.query_raw(query, tuple(params))
     
     def save_reply_email(
         self,
@@ -557,13 +594,20 @@ class DatabaseServicePostgres:
              json.dumps(evaluation_result) if evaluation_result else None, 'evaluated')
         )
     
-    def get_cv_evaluation_by_id(self, cv_id: int) -> Optional[Dict]:
-        """Get CV evaluation by ID"""
-        result = self.query_raw(
-            "SELECT * FROM cv_evaluations WHERE id = %s",
-            (cv_id,),
-            one=True
-        )
+    def get_cv_evaluation_by_id(self, cv_id: int, user_id: Optional[int] = None) -> Optional[Dict]:
+        """Get CV evaluation by ID, optionally filtered by user_id for security"""
+        if user_id:
+            result = self.query_raw(
+                "SELECT * FROM cv_evaluations WHERE id = %s AND user_id = %s",
+                (cv_id, user_id),
+                one=True
+            )
+        else:
+            result = self.query_raw(
+                "SELECT * FROM cv_evaluations WHERE id = %s",
+                (cv_id,),
+                one=True
+            )
         return result
     
     def get_all_cv_evaluations(self, user_id: Optional[int] = None) -> List[Dict]:
@@ -615,19 +659,43 @@ class DatabaseServicePostgres:
             (datetime.now().isoformat(), cv_id)
         )
     
-    def delete_cv_evaluation(self, cv_id: int):
-        """Delete a CV evaluation"""
+    def delete_cv_evaluation(self, cv_id: int, user_id: Optional[int] = None) -> bool:
+        """Delete a CV evaluation, optionally filtered by user_id"""
+        if user_id:
+            # Verify ownership before deleting
+            cv = self.get_cv_evaluation_by_id(cv_id, user_id)
+            if not cv:
+                return False
         self.execute_raw("DELETE FROM cv_evaluations WHERE id = %s", (cv_id,))
+        return True
     
-    def delete_cv_evaluations(self, cv_ids: List[int]) -> int:
-        """Delete multiple CV evaluations by IDs"""
+    def delete_cv_evaluations(self, cv_ids: List[int], user_id: Optional[int] = None) -> int:
+        """Delete multiple CV evaluations by IDs, optionally filtered by user_id"""
         if not cv_ids:
             return 0
-        placeholders = ','.join(['%s'] * len(cv_ids))
-        with self.get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(f"DELETE FROM cv_evaluations WHERE id IN ({placeholders})", tuple(cv_ids))
-            return cursor.rowcount
+        
+        if user_id:
+            # Only delete CVs that belong to this user
+            placeholders = ','.join(['%s'] * len(cv_ids))
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                # Get IDs that belong to this user
+                cursor.execute(
+                    f"SELECT id FROM cv_evaluations WHERE id IN ({placeholders}) AND user_id = %s",
+                    tuple(cv_ids) + (user_id,)
+                )
+                valid_ids = [row[0] for row in cursor.fetchall()]
+                if not valid_ids:
+                    return 0
+                valid_placeholders = ','.join(['%s'] * len(valid_ids))
+                cursor.execute(f"DELETE FROM cv_evaluations WHERE id IN ({valid_placeholders})", tuple(valid_ids))
+                return len(valid_ids)
+        else:
+            placeholders = ','.join(['%s'] * len(cv_ids))
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cursor.execute(f"DELETE FROM cv_evaluations WHERE id IN ({placeholders})", tuple(cv_ids))
+                return cursor.rowcount
     
     def delete_all_cv_evaluations(self, user_id: Optional[int] = None) -> int:
         """Delete all CV evaluations"""

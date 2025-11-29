@@ -660,7 +660,8 @@ def preview_email():
 def get_emails():
     """Get all tracked emails"""
     try:
-        emails = database.get_all_emails()
+        user_id = request.current_user['id']
+        emails = database.get_all_emails(user_id)
         
         # Parse analysis JSON for each email
         for email in emails:
@@ -687,7 +688,8 @@ def get_emails():
 def get_email(email_id):
     """Get a specific email by ID"""
     try:
-        email = database.get_email_by_id(email_id)
+        user_id = request.current_user['id']
+        email = database.get_email_by_id(email_id, user_id)
         
         if email:
             return jsonify({
@@ -712,7 +714,8 @@ def get_email(email_id):
 def get_email_thread(email_id):
     """Get conversation thread for an email"""
     try:
-        thread = database.get_conversation_thread(email_id)
+        user_id = request.current_user['id']
+        thread = database.get_conversation_thread(email_id, user_id)
         
         # Parse analysis JSON for each email in thread
         for email in thread:
@@ -754,12 +757,13 @@ def reply_to_email(email_id):
                 "error_code": "EMAIL_NOT_CONFIGURED"
             }), 400
         
-        # Get original email
-        original_email = database.get_email_by_id(email_id)
+        # Get original email (with user_id check for security)
+        user_id = request.current_user['id']
+        original_email = database.get_email_by_id(email_id, user_id)
         if not original_email:
             return jsonify({
                 "success": False,
-                "error": "Email gốc không tồn tại"
+                "error": "Email gốc không tồn tại hoặc bạn không có quyền truy cập"
             }), 404
         
         purpose = data.get('purpose')
@@ -871,12 +875,12 @@ def preview_reply_email(email_id):
         # Get user settings
         user_settings = database.get_user_settings(user_id) if user_id else None
         
-        # Get original email
-        original_email = database.get_email_by_id(email_id)
+        # Get original email (with user_id check for security)
+        original_email = database.get_email_by_id(email_id, user_id)
         if not original_email:
             return jsonify({
                 "success": False,
-                "error": "Email gốc không tồn tại"
+                "error": "Email gốc không tồn tại hoặc bạn không có quyền truy cập"
             }), 404
         
         purpose = data.get('purpose')
@@ -936,7 +940,13 @@ Phản hồi đã nhận được từ {original_email.get('recipient_name')}:
 def delete_email(email_id):
     """Delete a specific email by ID"""
     try:
-        database.delete_email(email_id)
+        user_id = request.current_user['id']
+        result = database.delete_email(email_id, user_id)
+        if not result:
+            return jsonify({
+                "success": False,
+                "error": "Email not found or access denied"
+            }), 404
         return jsonify({
             "success": True,
             "message": "Email deleted successfully"
@@ -953,6 +963,7 @@ def delete_email(email_id):
 def delete_multiple_emails():
     """Delete multiple emails by IDs"""
     try:
+        user_id = request.current_user['id']
         data = request.json
         email_ids = data.get('email_ids', [])
         
@@ -962,7 +973,7 @@ def delete_multiple_emails():
                 "error": "No email IDs provided"
             }), 400
         
-        deleted_count = database.delete_emails(email_ids)
+        deleted_count = database.delete_emails(email_ids, user_id)
         return jsonify({
             "success": True,
             "message": f"Deleted {deleted_count} emails",
@@ -980,7 +991,8 @@ def delete_multiple_emails():
 def delete_all_emails():
     """Delete all sent emails"""
     try:
-        deleted_count = database.delete_all_emails()
+        user_id = request.current_user['id']
+        deleted_count = database.delete_all_emails(user_id)
         return jsonify({
             "success": True,
             "message": f"Deleted all {deleted_count} emails",
@@ -998,7 +1010,8 @@ def delete_all_emails():
 def delete_all_cv_evaluations():
     """Delete all CV evaluations"""
     try:
-        deleted_count = database.delete_all_cv_evaluations()
+        user_id = request.current_user['id']
+        deleted_count = database.delete_all_cv_evaluations(user_id)
         return jsonify({
             "success": True,
             "message": f"Deleted all {deleted_count} CV evaluations",
@@ -1016,7 +1029,13 @@ def delete_all_cv_evaluations():
 def delete_cv_evaluation(cv_id):
     """Delete a specific CV evaluation by ID"""
     try:
-        database.delete_cv_evaluation(cv_id)
+        user_id = request.current_user['id']
+        result = database.delete_cv_evaluation(cv_id, user_id)
+        if not result:
+            return jsonify({
+                "success": False,
+                "error": "CV not found or access denied"
+            }), 404
         return jsonify({
             "success": True,
             "message": "CV evaluation deleted successfully"
@@ -1033,6 +1052,7 @@ def delete_cv_evaluation(cv_id):
 def delete_multiple_cv_evaluations():
     """Delete multiple CV evaluations by IDs"""
     try:
+        user_id = request.current_user['id']
         data = request.json
         cv_ids = data.get('cv_ids', [])
         
@@ -1042,7 +1062,7 @@ def delete_multiple_cv_evaluations():
                 "error": "No CV IDs provided"
             }), 400
         
-        deleted_count = database.delete_cv_evaluations(cv_ids)
+        deleted_count = database.delete_cv_evaluations(cv_ids, user_id)
         return jsonify({
             "success": True,
             "message": f"Deleted {deleted_count} CV evaluations",
@@ -1060,8 +1080,9 @@ def delete_multiple_cv_evaluations():
 def delete_all_data():
     """Delete all emails and CV evaluations"""
     try:
-        email_count = database.delete_all_emails()
-        cv_count = database.delete_all_cv_evaluations()
+        user_id = request.current_user['id']
+        email_count = database.delete_all_emails(user_id)
+        cv_count = database.delete_all_cv_evaluations(user_id)
         return jsonify({
             "success": True,
             "message": f"Deleted {email_count} emails and {cv_count} CV evaluations",
@@ -1080,8 +1101,9 @@ def delete_all_data():
 def get_data_stats():
     """Get statistics about emails and CV evaluations"""
     try:
-        email_count = database.get_email_count()
-        cv_count = database.get_cv_count()
+        user_id = request.current_user['id']
+        email_count = database.get_email_count(user_id)
+        cv_count = database.get_cv_count(user_id)
         return jsonify({
             "success": True,
             "email_count": email_count,
@@ -1550,12 +1572,13 @@ def send_cv_invitation_email(cv_id, evaluation, candidate_name, candidate_email,
 def send_cv_email(cv_id):
     """Gửi/gửi lại email cho ứng viên"""
     try:
-        cv_data = database.get_cv_evaluation_by_id(cv_id)
+        user_id = request.current_user['id']
+        cv_data = database.get_cv_evaluation_by_id(cv_id, user_id)
         
         if not cv_data:
             return jsonify({
                 "success": False,
-                "error": "Không tìm thấy CV"
+                "error": "Không tìm thấy CV hoặc bạn không có quyền truy cập"
             }), 404
         
         data = request.json or {}
@@ -1638,7 +1661,8 @@ def allow_resend_cv_email(cv_id):
 def list_cv_evaluations():
     """Lấy danh sách tất cả CV đã đánh giá"""
     try:
-        evaluations = database.get_all_cv_evaluations()
+        user_id = request.current_user['id']
+        evaluations = database.get_all_cv_evaluations(user_id)
         return jsonify({
             "success": True,
             "evaluations": evaluations
@@ -1655,12 +1679,13 @@ def list_cv_evaluations():
 def get_cv_evaluation(cv_id):
     """Lấy chi tiết một CV đánh giá"""
     try:
-        cv_data = database.get_cv_evaluation_by_id(cv_id)
+        user_id = request.current_user['id']
+        cv_data = database.get_cv_evaluation_by_id(cv_id, user_id)
         
         if cv_data:
             # Lấy thông tin email liên quan nếu có
             if cv_data.get('sent_email_id'):
-                email_data = database.get_email_by_id(cv_data['sent_email_id'])
+                email_data = database.get_email_by_id(cv_data['sent_email_id'], user_id)
                 cv_data['email_info'] = email_data
             
             return jsonify({
