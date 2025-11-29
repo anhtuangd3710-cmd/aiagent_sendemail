@@ -485,12 +485,45 @@ def send_email():
                 purpose=purpose
             )
             
+            # Auto-start monitor after sending email
+            global monitor, monitor_auto_started
+            if not monitor or not monitor._running:
+                try:
+                    # Create monitor with user's email settings if available
+                    if user_settings and user_settings.get('sender_email') and user_settings.get('sender_password'):
+                        user_monitor_email_service = EmailService()
+                        user_monitor_email_service.sender_email = user_settings.get('sender_email')
+                        user_monitor_email_service.sender_password = user_settings.get('sender_password')
+                        user_monitor_email_service.imap_host = user_settings.get('imap_host', 'imap.gmail.com')
+                        user_monitor_email_service.imap_port = int(user_settings.get('imap_port', 993))
+                        
+                        monitor = EmailMonitor(
+                            user_monitor_email_service,
+                            ai_agent,
+                            database,
+                            notification_callback=notification_callback
+                        )
+                    else:
+                        monitor = EmailMonitor(
+                            email_service,
+                            ai_agent,
+                            database,
+                            notification_callback=notification_callback
+                        )
+                    
+                    monitor.start()
+                    monitor_auto_started = True
+                    print("✅ Email monitor auto-started after sending email")
+                except Exception as e:
+                    print(f"⚠️ Failed to auto-start monitor: {e}")
+            
             return jsonify({
                 "success": True,
                 "email_id": email_id,
                 "subject": generated_email['subject'],
                 "body": generated_email['body'],
-                "message": "Email sent successfully!"
+                "message": "Email sent successfully!",
+                "monitor_started": monitor is not None and monitor._running if monitor else False
             })
         else:
             return jsonify({

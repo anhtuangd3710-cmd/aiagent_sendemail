@@ -471,6 +471,13 @@ async function sendEmail() {
             const composeContainer = document.querySelector('.compose-container');
             previewSection.classList.remove('active');
             composeContainer.classList.remove('with-preview');
+            
+            // Check if monitor was auto-started and update UI
+            if (result.monitor_started) {
+                updateMonitorUI(true);
+                showToast('info', 'Giám sát tự động', 'Hệ thống giám sát phản hồi đã được kích hoạt');
+                addActivityLog('success', 'Auto-Monitor', 'Hệ thống giám sát đã tự động bật sau khi gửi email');
+            }
         } else {
             showToast('error', 'Lỗi', result.error || 'Không thể gửi email');
         }
