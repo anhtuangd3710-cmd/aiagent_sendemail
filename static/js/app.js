@@ -479,7 +479,16 @@ async function sendEmail() {
                 addActivityLog('success', 'Auto-Monitor', 'Hệ thống giám sát đã tự động bật sau khi gửi email');
             }
         } else {
-            showToast('error', 'Lỗi', result.error || 'Không thể gửi email');
+            // Handle specific error codes
+            if (result.error_code === 'EMAIL_NOT_CONFIGURED') {
+                showToast('warning', 'Chưa cấu hình Email', result.error);
+                // Show prompt to configure email
+                if (confirm('Bạn cần cấu hình Email gửi trước khi gửi email. Chuyển đến trang Hồ sơ để cấu hình?')) {
+                    navigateTo('profile');
+                }
+            } else {
+                showToast('error', 'Lỗi', result.error || 'Không thể gửi email');
+            }
         }
     } catch (error) {
         showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
@@ -571,7 +580,7 @@ function initInbox() {
 
 async function loadEmails() {
     try {
-        const response = await fetch(`${API_BASE}/api/emails`);
+        const response = await authFetch(`${API_BASE}/api/emails`);
         const result = await response.json();
         
         if (result.success) {
@@ -830,8 +839,12 @@ function startAutoCheck() {
     autoCheckEnabled = true;
     updateAutoCheckUI(true);
     
-    // Initial check
-    autoCheckResponses();
+    // Delay first check by 5 seconds to allow database to sync
+    setTimeout(() => {
+        if (autoCheckEnabled) {
+            autoCheckResponses();
+        }
+    }, 5000);
     
     // Set interval for periodic checks
     autoCheckInterval = setInterval(() => {
@@ -1003,21 +1016,25 @@ function updateMonitorUI(running) {
     const stopBtn = document.getElementById('stop-monitor-btn');
     
     if (running) {
-        statusDot.classList.add('running');
-        statusText.textContent = 'Đang chạy';
-        statusIcon.className = 'status-icon running';
-        statusIcon.innerHTML = '<i class="fas fa-play-circle"></i>';
-        statusTextLarge.textContent = 'Đang chạy';
-        startBtn.style.display = 'none';
-        stopBtn.style.display = 'inline-flex';
+        if (statusDot) statusDot.classList.add('running');
+        if (statusText) statusText.textContent = 'Đang chạy';
+        if (statusIcon) {
+            statusIcon.className = 'status-icon running';
+            statusIcon.innerHTML = '<i class="fas fa-play-circle"></i>';
+        }
+        if (statusTextLarge) statusTextLarge.textContent = 'Đang chạy';
+        if (startBtn) startBtn.style.display = 'none';
+        if (stopBtn) stopBtn.style.display = 'inline-flex';
     } else {
-        statusDot.classList.remove('running');
-        statusText.textContent = 'Đang dừng';
-        statusIcon.className = 'status-icon stopped';
-        statusIcon.innerHTML = '<i class="fas fa-stop-circle"></i>';
-        statusTextLarge.textContent = 'Đã dừng';
-        startBtn.style.display = 'inline-flex';
-        stopBtn.style.display = 'none';
+        if (statusDot) statusDot.classList.remove('running');
+        if (statusText) statusText.textContent = 'Đang dừng';
+        if (statusIcon) {
+            statusIcon.className = 'status-icon stopped';
+            statusIcon.innerHTML = '<i class="fas fa-stop-circle"></i>';
+        }
+        if (statusTextLarge) statusTextLarge.textContent = 'Đã dừng';
+        if (startBtn) startBtn.style.display = 'inline-flex';
+        if (stopBtn) stopBtn.style.display = 'none';
     }
 }
 
@@ -2162,6 +2179,14 @@ async function loadUserSettings() {
         if (data.success && data.settings) {
             const s = data.settings;
             
+            // Check if email is configured - show warning if not
+            const emailConfigured = s.sender_email && s.sender_password;
+            updateEmailConfigWarning(!emailConfigured);
+            
+            // Check if Gemini API key is configured - show info
+            const hasCustomApiKey = !!s.gemini_api_key;
+            updateApiKeyInfo(hasCustomApiKey);
+            
             // AI Provider
             const provider = s.ai_provider || 'azure';
             const providerRadio = document.querySelector(`input[name="ai-provider"][value="${provider}"]`);
@@ -2211,6 +2236,85 @@ async function loadUserSettings() {
         }
     } catch (error) {
         console.error('Error loading settings:', error);
+    }
+}
+
+// Update email config warning banner
+function updateEmailConfigWarning(showWarning) {
+    let warningBanner = document.getElementById('email-config-warning');
+    
+    if (showWarning) {
+        if (!warningBanner) {
+            // Create warning banner
+            const composePage = document.getElementById('compose-page');
+            if (composePage) {
+                warningBanner = document.createElement('div');
+                warningBanner.id = 'email-config-warning';
+                warningBanner.className = 'config-warning-banner';
+                warningBanner.innerHTML = `
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Bạn chưa cấu hình Email gửi. Chỉ có thể xem trước email, không thể gửi.</span>
+                    <button onclick="navigateTo('profile')" class="btn btn-small btn-warning">
+                        <i class="fas fa-cog"></i> Cấu hình ngay
+                    </button>
+                `;
+                composePage.insertBefore(warningBanner, composePage.firstChild);
+            }
+        }
+        warningBanner.style.display = 'flex';
+        
+        // Disable send button
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) {
+            sendBtn.disabled = true;
+            sendBtn.title = 'Bạn cần cấu hình Email gửi trước khi gửi email';
+        }
+    } else {
+        if (warningBanner) {
+            warningBanner.style.display = 'none';
+        }
+        // Enable send button
+        const sendBtn = document.getElementById('send-btn');
+        if (sendBtn) {
+            sendBtn.disabled = false;
+            sendBtn.title = '';
+        }
+    }
+}
+
+// Update API key info
+function updateApiKeyInfo(hasCustomKey) {
+    let apiKeyInfo = document.getElementById('api-key-info');
+    const composePage = document.getElementById('compose-page');
+    
+    if (!apiKeyInfo && composePage) {
+        apiKeyInfo = document.createElement('div');
+        apiKeyInfo.id = 'api-key-info';
+        apiKeyInfo.className = 'api-key-info-banner';
+        
+        // Insert after warning banner if exists, or at the start
+        const warningBanner = document.getElementById('email-config-warning');
+        if (warningBanner) {
+            warningBanner.after(apiKeyInfo);
+        } else {
+            composePage.insertBefore(apiKeyInfo, composePage.firstChild);
+        }
+    }
+    
+    if (apiKeyInfo) {
+        if (hasCustomKey) {
+            apiKeyInfo.innerHTML = `
+                <i class="fas fa-key"></i>
+                <span>Bạn đang sử dụng Gemini API Key riêng - Không giới hạn sử dụng</span>
+            `;
+            apiKeyInfo.className = 'api-key-info-banner custom-key';
+        } else {
+            apiKeyInfo.innerHTML = `
+                <i class="fas fa-info-circle"></i>
+                <span>Đang dùng API key hệ thống (giới hạn miễn phí). <a href="#" onclick="navigateTo('profile'); return false;">Thêm API key riêng</a> để sử dụng không giới hạn.</span>
+            `;
+            apiKeyInfo.className = 'api-key-info-banner system-key';
+        }
     }
 }
 

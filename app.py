@@ -37,6 +37,65 @@ else:
     from services.cv_evaluator import CVEvaluator
     print("🤖 Using Azure OpenAI")
 
+
+def get_ai_agent_for_user(user_settings: dict):
+    """
+    Get AI agent with user's API key if configured, otherwise use default.
+    If user has their own Gemini API key, use it for unlimited usage.
+    """
+    import google.generativeai as genai
+    from config.settings import GEMINI_MODEL
+    
+    user_gemini_key = user_settings.get('gemini_api_key') if user_settings else None
+    
+    if user_gemini_key:
+        # Create a custom AI agent with user's API key
+        class UserAIAgent:
+            def __init__(self, api_key):
+                genai.configure(api_key=api_key)
+                self.model = genai.GenerativeModel(
+                    model_name=GEMINI_MODEL,
+                    generation_config={
+                        "temperature": 0.7,
+                        "top_p": 0.95,
+                        "top_k": 40,
+                        "max_output_tokens": 8192,
+                    }
+                )
+                # Copy methods from the default ai_agent
+                self._extract_json = ai_agent._extract_json
+                self.generate_email = self._generate_email_method
+                self.analyze_response = ai_agent.analyze_response
+                self.generate_notification_email = ai_agent.generate_notification_email
+            
+            def _generate_email_method(self, *args, **kwargs):
+                """Generate email using user's model"""
+                # Re-use the base agent's logic but with user's model
+                return ai_agent.generate_email(*args, **kwargs)
+        
+        return UserAIAgent(user_gemini_key)
+    else:
+        # Use default AI agent (with system API key - limited free usage)
+        return ai_agent
+
+
+def get_cv_evaluator_for_user(user_settings: dict):
+    """
+    Get CV evaluator with user's API key if configured, otherwise use default.
+    """
+    import google.generativeai as genai
+    from config.settings import GEMINI_MODEL
+    
+    user_gemini_key = user_settings.get('gemini_api_key') if user_settings else None
+    
+    if user_gemini_key:
+        # Configure with user's API key and return default evaluator
+        # Note: This reconfigures genai globally for this request
+        genai.configure(api_key=user_gemini_key)
+    
+    return cv_evaluator
+
+
 app = Flask(__name__)
 app.secret_key = 'email-agent-secret-key-change-in-production'
 CORS(app, supports_credentials=True)
@@ -401,17 +460,21 @@ def send_email():
         # Get user settings for email
         user_settings = database.get_user_settings(request.current_user['id'])
         
-        # Create email service with user's settings if available
-        if user_settings and user_settings.get('sender_email') and user_settings.get('sender_password'):
-            user_email_service = EmailService()
-            user_email_service.sender_email = user_settings.get('sender_email')
-            user_email_service.sender_password = user_settings.get('sender_password')
-            user_email_service.smtp_host = user_settings.get('email_host', 'smtp.gmail.com')
-            user_email_service.smtp_port = int(user_settings.get('email_port', 587))
-            sender_email_config = user_settings.get('sender_email')
-        else:
-            user_email_service = email_service
-            sender_email_config = SENDER_EMAIL
+        # Check if email is configured - REQUIRED for sending
+        if not user_settings or not user_settings.get('sender_email') or not user_settings.get('sender_password'):
+            return jsonify({
+                "success": False,
+                "error": "Bạn chưa cấu hình Email gửi. Vui lòng vào mục 'Hồ sơ & API Keys' để cấu hình Email và App Password trước khi gửi email.",
+                "error_code": "EMAIL_NOT_CONFIGURED"
+            }), 400
+        
+        # Create email service with user's settings
+        user_email_service = EmailService()
+        user_email_service.sender_email = user_settings.get('sender_email')
+        user_email_service.sender_password = user_settings.get('sender_password')
+        user_email_service.smtp_host = user_settings.get('email_host', 'smtp.gmail.com')
+        user_email_service.smtp_port = int(user_settings.get('email_port', 587))
+        sender_email_config = user_settings.get('sender_email')
         
         sender_name = data.get('sender_name')
         recipient_name = data.get('recipient_name')
@@ -420,7 +483,7 @@ def send_email():
         tone = data.get('tone', 'professional')
         language = data.get('language', 'vi')
         additional_context = data.get('additional_context')
-        notification_email = data.get('notification_email') or sender_email_config or SENDER_EMAIL
+        notification_email = data.get('notification_email') or sender_email_config
         
         # Check if custom subject/body provided (from preview)
         custom_subject = data.get('custom_subject')
@@ -440,7 +503,9 @@ def send_email():
                 'body': custom_body
             }
         else:
-            generated_email = ai_agent.generate_email(
+            # Use user's Gemini API key if configured
+            user_ai_agent = get_ai_agent_for_user(user_settings)
+            generated_email = user_ai_agent.generate_email(
                 sender_name=sender_name,
                 recipient_name=recipient_name,
                 recipient_email=recipient_email,
@@ -559,8 +624,15 @@ def preview_email():
                 "error": "Missing required fields"
             }), 400
         
+        # Get user settings to check for custom API key
+        user_id = request.user.get('user_id')
+        user_settings = database.get_user_settings(user_id) if user_id else None
+        
+        # Use user's AI agent if they have custom API key, otherwise use default
+        user_ai_agent = get_ai_agent_for_user(user_settings)
+        
         # Generate email using AI
-        generated_email = ai_agent.generate_email(
+        generated_email = user_ai_agent.generate_email(
             sender_name=sender_name,
             recipient_name=recipient_name,
             recipient_email=recipient_email,
@@ -1150,8 +1222,15 @@ def evaluate_cv():
                 "error": "Thiếu thông tin bắt buộc"
             }), 400
         
+        # Get user settings to check for custom API key
+        user_id = request.user.get('user_id')
+        user_settings = database.get_user_settings(user_id) if user_id else None
+        
+        # Use user's CV evaluator if they have custom API key
+        user_cv_evaluator = get_cv_evaluator_for_user(user_settings)
+        
         # Đánh giá CV
-        evaluation = cv_evaluator.evaluate_cv(
+        evaluation = user_cv_evaluator.evaluate_cv(
             cv_content=cv_content,
             job_title=job_title,
             job_requirements=job_requirements,
@@ -1392,8 +1471,15 @@ def preview_cv_email():
         evaluation_result = data.get('evaluation_result', {})
         interview_details = data.get('interview_details')
         
+        # Get user settings to check for custom API key
+        user_id = request.user.get('user_id')
+        user_settings = database.get_user_settings(user_id) if user_id else None
+        
+        # Use user's CV evaluator if they have custom API key
+        user_cv_evaluator = get_cv_evaluator_for_user(user_settings)
+        
         if email_type == 'invitation':
-            email_content = cv_evaluator.generate_interview_invitation(
+            email_content = user_cv_evaluator.generate_interview_invitation(
                 candidate_name=candidate_name,
                 candidate_email=candidate_email,
                 job_title=job_title,
@@ -1402,7 +1488,7 @@ def preview_cv_email():
                 interview_details=interview_details
             )
         else:
-            email_content = cv_evaluator.generate_rejection_email(
+            email_content = user_cv_evaluator.generate_rejection_email(
                 candidate_name=candidate_name,
                 job_title=job_title,
                 company_name=company_name,

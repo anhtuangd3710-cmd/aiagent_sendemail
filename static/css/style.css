@@ -903,6 +903,100 @@ body {
     font-size: 1rem;
 }
 
+/* Email Config Warning Banner */
+.config-warning-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+    border: 1px solid #fb923c;
+    border-radius: var(--border-radius);
+    margin-bottom: 20px;
+    color: #9a3412;
+    animation: slideDown 0.3s ease-out;
+}
+
+.config-warning-banner i {
+    font-size: 1.25rem;
+    color: #ea580c;
+}
+
+.config-warning-banner span {
+    flex: 1;
+    font-weight: 500;
+}
+
+.config-warning-banner .btn-warning {
+    background: #ea580c;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.2s;
+}
+
+.config-warning-banner .btn-warning:hover {
+    background: #c2410c;
+}
+
+/* API Key Info Banner */
+.api-key-info-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 20px;
+    border-radius: var(--border-radius);
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+}
+
+.api-key-info-banner.system-key {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border: 1px solid #60a5fa;
+    color: #1e40af;
+}
+
+.api-key-info-banner.system-key i {
+    color: #3b82f6;
+}
+
+.api-key-info-banner.system-key a {
+    color: #1d4ed8;
+    font-weight: 600;
+    text-decoration: underline;
+}
+
+.api-key-info-banner.system-key a:hover {
+    color: #1e3a8a;
+}
+
+.api-key-info-banner.custom-key {
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    border: 1px solid #34d399;
+    color: #065f46;
+}
+
+.api-key-info-banner.custom-key i {
+    color: #10b981;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 .monitor-actions {
     display: flex;
     gap: 12px;
