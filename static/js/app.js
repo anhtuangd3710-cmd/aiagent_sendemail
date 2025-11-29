@@ -594,15 +594,29 @@ async function loadEmails() {
 }
 
 function groupEmailsByThread(emailList) {
-    // Group emails by thread_id or by parent relationship
-    const threads = {};
-    const rootEmails = [];
+    // First, deduplicate emails by id (in case of any duplicates)
+    const uniqueEmails = [];
+    const seenIds = new Set();
     
     emailList.forEach(email => {
-        const threadId = email.thread_id || email.id;
+        if (!seenIds.has(email.id)) {
+            seenIds.add(email.id);
+            uniqueEmails.push(email);
+        }
+    });
+    
+    // Group emails by thread_id or by parent relationship
+    const threads = {};
+    const processedIds = new Set();
+    
+    uniqueEmails.forEach(email => {
+        // Skip if already processed
+        if (processedIds.has(email.id)) return;
+        processedIds.add(email.id);
         
-        if (!email.parent_email_id) {
-            // This is a root email
+        if (!email.parent_email_id && email.email_type !== 'reply') {
+            // This is a root email (original, not a reply)
+            const threadId = email.thread_id || email.id;
             if (!threads[threadId]) {
                 threads[threadId] = {
                     root: email,
@@ -611,26 +625,38 @@ function groupEmailsByThread(emailList) {
             } else {
                 threads[threadId].root = email;
             }
-            rootEmails.push(threadId);
         } else {
             // This is a reply
-            const parentThreadId = email.thread_id || email.parent_email_id;
+            const parentThreadId = email.thread_id || email.parent_email_id || email.id;
             if (!threads[parentThreadId]) {
                 threads[parentThreadId] = {
                     root: null,
                     replies: []
                 };
             }
-            threads[parentThreadId].replies.push(email);
+            // Check if this reply is already in the list
+            const existingReply = threads[parentThreadId].replies.find(r => r.id === email.id);
+            if (!existingReply) {
+                threads[parentThreadId].replies.push(email);
+            }
         }
     });
     
-    // Sort replies by sent_at
+    // Sort replies by sent_at and remove duplicates
     Object.values(threads).forEach(thread => {
-        thread.replies.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
+        // Remove duplicate replies
+        const uniqueReplies = [];
+        const replyIds = new Set();
+        thread.replies.forEach(reply => {
+            if (!replyIds.has(reply.id)) {
+                replyIds.add(reply.id);
+                uniqueReplies.push(reply);
+            }
+        });
+        thread.replies = uniqueReplies.sort((a, b) => new Date(a.sent_at) - new Date(b.sent_at));
     });
     
-    return { threads, rootEmails };
+    return { threads };
 }
 
 function renderEmails() {

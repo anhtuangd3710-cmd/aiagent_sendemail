@@ -397,19 +397,27 @@ class DatabaseServicePostgres:
         )
     
     def get_all_emails(self, user_id: Optional[int] = None) -> List[Dict]:
-        """Get all emails with responses"""
+        """Get all emails with responses (latest response only)"""
+        # Use subquery to get only the latest response for each email
         query = """
-            SELECT se.*, r.response_body, r.analysis, r.received_at as response_received_at
+            SELECT DISTINCT ON (se.id) se.*, 
+                   r.response_body, r.response_subject as response_subject,
+                   r.analysis, r.received_at as response_received_at
             FROM sent_emails se
             LEFT JOIN responses r ON se.id = r.sent_email_id
         """
         if user_id:
             query += " WHERE se.user_id = %s"
-            query += " ORDER BY se.sent_at DESC"
-            return self.query_raw(query, (user_id,))
         
-        query += " ORDER BY se.sent_at DESC"
-        return self.query_raw(query)
+        query += " ORDER BY se.id, r.received_at DESC NULLS LAST"
+        
+        if user_id:
+            results = self.query_raw(query, (user_id,))
+        else:
+            results = self.query_raw(query)
+        
+        # Sort by sent_at descending after DISTINCT ON
+        return sorted(results, key=lambda x: x.get('sent_at', ''), reverse=True)
     
     def delete_email(self, email_id: int):
         """Delete a sent email and its responses"""
