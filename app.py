@@ -782,9 +782,27 @@ def check_responses():
 @app.route('/api/check-imap', methods=['GET'])
 @login_required
 def check_imap():
-    """Check IMAP connection status"""
+    """Check IMAP connection status using user's settings"""
     try:
-        result = email_service.check_imap_connection()
+        # Get user settings from database
+        user_settings = database.get_user_settings(request.current_user['id'])
+        
+        if user_settings and user_settings.get('sender_email') and user_settings.get('sender_password'):
+            # Create temporary email service with user's settings
+            from services.email_service import EmailService
+            temp_email_service = EmailService()
+            temp_email_service.sender_email = user_settings.get('sender_email')
+            temp_email_service.sender_password = user_settings.get('sender_password')
+            
+            # Use custom IMAP host/port if configured
+            imap_host = user_settings.get('imap_host', 'imap.gmail.com')
+            imap_port = user_settings.get('imap_port', 993)
+            
+            result = temp_email_service.check_imap_connection_with_config(imap_host, imap_port)
+        else:
+            # Fall back to global email service
+            result = email_service.check_imap_connection()
+        
         return jsonify(result)
     except Exception as e:
         return jsonify({

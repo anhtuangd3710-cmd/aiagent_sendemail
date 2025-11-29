@@ -275,6 +275,74 @@ class EmailService:
                 "details": str(e)
             }
     
+    def check_imap_connection_with_config(self, imap_host: str = None, imap_port: int = None) -> Dict:
+        """
+        Test IMAP connection with custom host/port
+        
+        Args:
+            imap_host: Custom IMAP host (default: use global config)
+            imap_port: Custom IMAP port (default: use global config)
+            
+        Returns:
+            Dict with 'success', 'message', and 'details'
+        """
+        host = imap_host or IMAP_HOST
+        port = imap_port or IMAP_PORT
+        
+        # Check if credentials are configured
+        if not self.sender_email or not self.sender_password:
+            self._imap_available = False
+            return {
+                "success": False,
+                "message": "Email not configured",
+                "details": "Vui lòng cấu hình Email và App Password trong phần Profile/Cài đặt."
+            }
+        
+        try:
+            logger.info(f"Testing IMAP connection to {host}:{port} with {self.sender_email}...")
+            mail = imaplib.IMAP4_SSL(host, port, timeout=15)
+            mail.login(self.sender_email, self.sender_password)
+            mail.select("INBOX")
+            
+            # Get mailbox status
+            status, data = mail.status("INBOX", "(MESSAGES UNSEEN)")
+            mail.logout()
+            
+            self._imap_available = True
+            return {
+                "success": True,
+                "message": "IMAP connection successful",
+                "details": f"Kết nối thành công đến {host}. " + (data[0].decode() if data else "")
+            }
+        except socket.timeout:
+            self._imap_available = False
+            return {
+                "success": False,
+                "message": "Connection timed out",
+                "details": f"Không thể kết nối đến {host}:{port}. Vui lòng kiểm tra firewall/antivirus."
+            }
+        except imaplib.IMAP4.error as e:
+            self._imap_available = False
+            error_msg = str(e)
+            if "AUTHENTICATIONFAILED" in error_msg.upper() or "invalid" in error_msg.lower():
+                return {
+                    "success": False,
+                    "message": "Authentication failed",
+                    "details": "Sai email hoặc App Password. Hãy kiểm tra lại và đảm bảo đã bật IMAP trong cài đặt Gmail."
+                }
+            return {
+                "success": False,
+                "message": "IMAP Error",
+                "details": f"Lỗi: {error_msg}"
+            }
+        except Exception as e:
+            self._imap_available = False
+            return {
+                "success": False,
+                "message": "Connection failed",
+                "details": str(e)
+            }
+    
     def _get_email_body(self, msg) -> str:
         """Extract email body from message"""
         body = ""
