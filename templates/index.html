@@ -361,15 +361,15 @@
                                     </div>
                                     <div class="status-details">
                                         <h3>Trạng thái: <span id="status-text-large">Đã dừng</span></h3>
-                                        <p>Hệ thống sẽ tự động kiểm tra phản hồi email mỗi 10 giây và gửi thông báo realtime</p>
+                                        <p>Trên Vercel, sử dụng Auto-check để tự động kiểm tra phản hồi mỗi 30 giây</p>
+                                        <div id="auto-check-status" class="auto-check-status stopped">
+                                            <i class="fas fa-pause"></i> Auto-check: Tắt
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="monitor-actions">
-                                    <button class="btn btn-success btn-lg" id="start-monitor-btn">
-                                        <i class="fas fa-play"></i> Bắt đầu giám sát
-                                    </button>
-                                    <button class="btn btn-danger btn-lg" id="stop-monitor-btn" style="display: none;">
-                                        <i class="fas fa-stop"></i> Dừng giám sát
+                                    <button class="btn btn-success btn-lg" id="auto-check-btn">
+                                        <i class="fas fa-robot"></i> Bật Auto-check
                                     </button>
                                     <button class="btn btn-primary btn-lg" id="check-once-btn">
                                         <i class="fas fa-bolt"></i> Kiểm tra ngay

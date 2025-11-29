@@ -671,15 +671,35 @@ function filterEmails() {
 function updatePendingCount() {
     const pendingCount = emails.filter(e => !e.response_received).length;
     document.getElementById('pending-count').textContent = pendingCount;
+    
+    // Auto-start checking if there are pending emails and auto-check is not running
+    if (pendingCount > 0 && !autoCheckInterval && !autoCheckEnabled) {
+        // Auto-enable after first email is sent
+        console.log(`📬 ${pendingCount} pending emails detected, starting auto-check...`);
+        startAutoCheck();
+    } else if (pendingCount === 0 && autoCheckInterval) {
+        // Stop auto-check if no more pending emails
+        console.log('📭 No more pending emails, stopping auto-check');
+        stopAutoCheck();
+    }
 }
 
 // ==================== Monitor Page ====================
 
 function initMonitor() {
-    document.getElementById('start-monitor-btn').addEventListener('click', startMonitor);
-    document.getElementById('stop-monitor-btn').addEventListener('click', stopMonitor);
-    document.getElementById('check-once-btn').addEventListener('click', checkResponsesOnce);
-    document.getElementById('check-imap-btn').addEventListener('click', checkImapConnection);
+    document.getElementById('start-monitor-btn')?.addEventListener('click', startMonitor);
+    document.getElementById('stop-monitor-btn')?.addEventListener('click', stopMonitor);
+    document.getElementById('check-once-btn')?.addEventListener('click', checkResponsesOnce);
+    document.getElementById('check-imap-btn')?.addEventListener('click', checkImapConnection);
+    
+    // Add auto-check button handler if exists
+    const autoCheckBtn = document.getElementById('auto-check-btn');
+    if (autoCheckBtn) {
+        autoCheckBtn.addEventListener('click', toggleAutoCheck);
+    }
+    
+    // Initialize auto-check UI
+    updateAutoCheckUI(false);
 }
 
 async function checkImapConnection() {
@@ -799,21 +819,170 @@ async function stopMonitor() {
     }
 }
 
+// Auto-check responses interval
+let autoCheckInterval = null;
+let autoCheckEnabled = false;
+const AUTO_CHECK_INTERVAL = 30000; // 30 seconds
+
+function startAutoCheck() {
+    if (autoCheckInterval) return;
+    
+    autoCheckEnabled = true;
+    updateAutoCheckUI(true);
+    
+    // Initial check
+    autoCheckResponses();
+    
+    // Set interval for periodic checks
+    autoCheckInterval = setInterval(() => {
+        autoCheckResponses();
+    }, AUTO_CHECK_INTERVAL);
+    
+    addActivityLog('success', 'Auto-check bật', `Tự động kiểm tra mỗi ${AUTO_CHECK_INTERVAL/1000} giây`);
+    console.log('🔄 Auto-check started');
+}
+
+function stopAutoCheck() {
+    if (autoCheckInterval) {
+        clearInterval(autoCheckInterval);
+        autoCheckInterval = null;
+    }
+    autoCheckEnabled = false;
+    updateAutoCheckUI(false);
+    addActivityLog('info', 'Auto-check tắt', 'Đã dừng kiểm tra tự động');
+    console.log('🔄 Auto-check stopped');
+}
+
+function updateAutoCheckUI(enabled) {
+    const autoCheckBtn = document.getElementById('auto-check-btn');
+    const autoCheckStatus = document.getElementById('auto-check-status');
+    
+    if (autoCheckBtn) {
+        if (enabled) {
+            autoCheckBtn.innerHTML = '<i class="fas fa-stop"></i> Dừng Auto-check';
+            autoCheckBtn.classList.remove('btn-success');
+            autoCheckBtn.classList.add('btn-warning');
+        } else {
+            autoCheckBtn.innerHTML = '<i class="fas fa-robot"></i> Bật Auto-check';
+            autoCheckBtn.classList.remove('btn-warning');
+            autoCheckBtn.classList.add('btn-success');
+        }
+    }
+    
+    if (autoCheckStatus) {
+        if (enabled) {
+            autoCheckStatus.innerHTML = `<i class="fas fa-sync-alt fa-spin"></i> Auto-check: Đang chạy (mỗi ${AUTO_CHECK_INTERVAL/1000}s)`;
+            autoCheckStatus.className = 'auto-check-status running';
+        } else {
+            autoCheckStatus.innerHTML = '<i class="fas fa-pause"></i> Auto-check: Tắt';
+            autoCheckStatus.className = 'auto-check-status stopped';
+        }
+    }
+}
+
+async function autoCheckResponses() {
+    // Only check if there are pending emails
+    const pendingCount = emails.filter(e => !e.response_received).length;
+    
+    if (pendingCount === 0) {
+        console.log('📭 No pending emails, skipping auto-check');
+        return;
+    }
+    
+    console.log(`📬 Auto-checking responses for ${pendingCount} pending emails...`);
+    
+    try {
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE}/api/check-responses`, { 
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+        const result = await response.json();
+        
+        if (result.success) {
+            const results = result.results || {};
+            const found = results.responses_found || 0;
+            const processed = results.responses_processed || 0;
+            
+            if (found > 0) {
+                showToast('success', 'Phản hồi mới!', `Tìm thấy ${found} phản hồi, xử lý ${processed}`);
+                addActivityLog('success', 'Auto-check', `Tìm thấy ${found} phản hồi mới`);
+            } else {
+                console.log('📭 Auto-check: No new responses');
+            }
+            
+            // Reload emails to update UI
+            loadEmails();
+        }
+    } catch (error) {
+        console.error('Auto-check error:', error);
+    }
+}
+
+function toggleAutoCheck() {
+    if (autoCheckEnabled) {
+        stopAutoCheck();
+    } else {
+        startAutoCheck();
+    }
+}
+
 async function checkResponsesOnce() {
     const btn = document.getElementById('check-once-btn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang kiểm tra...';
     
     try {
-        const response = await fetch(`${API_BASE}/api/check-responses`, { method: 'POST' });
+        const token = localStorage.getItem('auth_token');
+        const response = await fetch(`${API_BASE}/api/check-responses`, { 
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
         const result = await response.json();
         
         if (result.success) {
-            showToast('success', 'Hoàn tất', 'Đã kiểm tra phản hồi');
-            addActivityLog('info', 'Kiểm tra thủ công', 'Đã quét hộp thư để tìm phản hồi');
+            const results = result.results || {};
+            const pending = results.pending_emails || 0;
+            const found = results.responses_found || 0;
+            const processed = results.responses_processed || 0;
+            
+            let message = `Đã kiểm tra ${pending} email chờ phản hồi.`;
+            if (found > 0) {
+                message += ` Tìm thấy ${found} phản hồi, xử lý ${processed}.`;
+                showToast('success', 'Có phản hồi mới!', message);
+            } else {
+                message += ' Chưa có phản hồi mới.';
+                showToast('info', 'Hoàn tất', message);
+            }
+            
+            addActivityLog('info', 'Kiểm tra thủ công', message);
+            
+            // Show details if any
+            if (results.details && results.details.length > 0) {
+                results.details.forEach(detail => {
+                    if (detail.found > 0) {
+                        addActivityLog('success', `Email #${detail.email_id}`, 
+                            `${detail.recipient}: ${detail.found} phản hồi, ${detail.processed} đã xử lý`);
+                    }
+                });
+            }
+            
+            if (results.errors && results.errors.length > 0) {
+                results.errors.forEach(error => {
+                    addActivityLog('warning', 'Lỗi', error);
+                });
+            }
+            
             loadEmails();
         } else {
             showToast('error', 'Lỗi', result.error);
+            addActivityLog('warning', 'Lỗi kiểm tra', result.error);
         }
     } catch (error) {
         showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
