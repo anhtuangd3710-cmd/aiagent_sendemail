@@ -1,5 +1,6 @@
 """
 PostgreSQL Database Service - For production deployment
+Supports both standard PostgreSQL and Neon Database (serverless PostgreSQL)
 Uses psycopg2 for PostgreSQL connection
 """
 import os
@@ -8,6 +9,7 @@ import logging
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
+from urllib.parse import urlparse
 
 try:
     import psycopg2
@@ -23,28 +25,75 @@ logger = logging.getLogger(__name__)
 
 
 class DatabaseServicePostgres:
-    """PostgreSQL Database Service for production"""
+    """PostgreSQL Database Service for production - Supports Neon Database"""
     
     def __init__(
         self,
+        database_url: str = None,
         host: str = None,
         port: int = None,
         database: str = None,
         user: str = None,
         password: str = None,
         min_connections: int = 1,
-        max_connections: int = 10
+        max_connections: int = 10,
+        sslmode: str = None
     ):
         if not PSYCOPG2_AVAILABLE:
             raise ImportError("psycopg2 is required for PostgreSQL. Install with: pip install psycopg2-binary")
         
-        # Load from environment if not provided
-        self.host = host or os.getenv('POSTGRES_HOST', 'localhost')
-        self.port = port or int(os.getenv('POSTGRES_PORT', 5432))
-        self.database = database or os.getenv('POSTGRES_DB', 'email_agent')
-        self.user = user or os.getenv('POSTGRES_USER', 'postgres')
-        self.password = password or os.getenv('POSTGRES_PASSWORD', '')
+        # Priority 1: DATABASE_URL (Neon format)
+        # Format: postgresql://user:password@host/database?sslmode=require
+        self.database_url = database_url or os.getenv('DATABASE_URL')
         
+        if self.database_url:
+            # Parse DATABASE_URL (Neon style)
+            self._init_from_url(self.database_url, min_connections, max_connections)
+        else:
+            # Priority 2: Individual parameters
+            self.host = host or os.getenv('POSTGRES_HOST', 'localhost')
+            self.port = port or int(os.getenv('POSTGRES_PORT', 5432))
+            self.database = database or os.getenv('POSTGRES_DB', 'email_agent')
+            self.user = user or os.getenv('POSTGRES_USER', 'postgres')
+            self.password = password or os.getenv('POSTGRES_PASSWORD', '')
+            self.sslmode = sslmode or os.getenv('POSTGRES_SSLMODE', 'prefer')
+            
+            self._init_connection_pool(min_connections, max_connections)
+        
+        self._init_database()
+    
+    def _init_from_url(self, database_url: str, min_connections: int, max_connections: int):
+        """Initialize connection from DATABASE_URL (Neon format)"""
+        parsed = urlparse(database_url)
+        
+        self.host = parsed.hostname
+        self.port = parsed.port or 5432
+        self.database = parsed.path.lstrip('/')
+        self.user = parsed.username
+        self.password = parsed.password
+        
+        # Parse query params for sslmode
+        query_params = dict(param.split('=') for param in parsed.query.split('&') if '=' in param)
+        self.sslmode = query_params.get('sslmode', 'require')  # Neon requires SSL
+        
+        logger.info(f"🚀 Connecting to Neon Database: {self.host}")
+        
+        # Create connection pool with SSL for Neon
+        self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
+            min_connections,
+            max_connections,
+            host=self.host,
+            port=self.port,
+            database=self.database,
+            user=self.user,
+            password=self.password,
+            sslmode=self.sslmode
+        )
+        
+        logger.info(f"✅ Neon PostgreSQL connected to {self.host}:{self.port}/{self.database}")
+    
+    def _init_connection_pool(self, min_connections: int, max_connections: int):
+        """Initialize standard PostgreSQL connection pool"""
         # Create connection pool
         self.connection_pool = psycopg2.pool.ThreadedConnectionPool(
             min_connections,
@@ -53,11 +102,11 @@ class DatabaseServicePostgres:
             port=self.port,
             database=self.database,
             user=self.user,
-            password=self.password
+            password=self.password,
+            sslmode=self.sslmode
         )
         
-        self._init_database()
-        logger.info(f"PostgreSQL connected to {self.host}:{self.port}/{self.database}")
+        logger.info(f"✅ PostgreSQL connected to {self.host}:{self.port}/{self.database}")
     
     @contextmanager
     def get_connection(self):
@@ -175,12 +224,27 @@ class DatabaseServicePostgres:
                 )
             """)
             
+            # User settings table (for storing API keys, email settings per user)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    setting_key VARCHAR(100) NOT NULL,
+                    setting_value TEXT,
+                    encrypted BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(user_id, setting_key)
+                )
+            """)
+            
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sent_emails_recipient ON sent_emails(recipient_email)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sent_emails_response ON sent_emails(response_received)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cv_evaluations_status ON cv_evaluations(status)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_settings_user ON user_settings(user_id)")
             
             logger.info("PostgreSQL database initialized")
     
@@ -298,6 +362,46 @@ class DatabaseServicePostgres:
         query += " ORDER BY se.sent_at DESC"
         return self.query_raw(query)
     
+    def delete_email(self, email_id: int):
+        """Delete a sent email and its responses"""
+        self.execute_raw("DELETE FROM responses WHERE sent_email_id = %s", (email_id,))
+        self.execute_raw("DELETE FROM sent_emails WHERE id = %s", (email_id,))
+    
+    def delete_emails(self, email_ids: List[int]) -> int:
+        """Delete multiple emails by IDs"""
+        if not email_ids:
+            return 0
+        placeholders = ','.join(['%s'] * len(email_ids))
+        self.execute_raw(f"DELETE FROM responses WHERE sent_email_id IN ({placeholders})", tuple(email_ids))
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"DELETE FROM sent_emails WHERE id IN ({placeholders})", tuple(email_ids))
+            return cursor.rowcount
+    
+    def delete_all_emails(self, user_id: Optional[int] = None) -> int:
+        """Delete all sent emails and responses"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if user_id:
+                cursor.execute("SELECT COUNT(*) FROM sent_emails WHERE user_id = %s", (user_id,))
+                count = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM responses WHERE sent_email_id IN (SELECT id FROM sent_emails WHERE user_id = %s)", (user_id,))
+                cursor.execute("DELETE FROM sent_emails WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("SELECT COUNT(*) FROM sent_emails")
+                count = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM responses")
+                cursor.execute("DELETE FROM sent_emails")
+            return count
+    
+    def get_email_count(self, user_id: Optional[int] = None) -> int:
+        """Get total number of sent emails"""
+        if user_id:
+            result = self.query_raw("SELECT COUNT(*) as cnt FROM sent_emails WHERE user_id = %s", (user_id,), one=True)
+        else:
+            result = self.query_raw("SELECT COUNT(*) as cnt FROM sent_emails", one=True)
+        return result['cnt'] if result else 0
+
     # ==================== CV Evaluation Methods ====================
     
     def save_cv_evaluation(
@@ -382,6 +486,42 @@ class DatabaseServicePostgres:
             (datetime.now().isoformat(), cv_id)
         )
     
+    def delete_cv_evaluation(self, cv_id: int):
+        """Delete a CV evaluation"""
+        self.execute_raw("DELETE FROM cv_evaluations WHERE id = %s", (cv_id,))
+    
+    def delete_cv_evaluations(self, cv_ids: List[int]) -> int:
+        """Delete multiple CV evaluations by IDs"""
+        if not cv_ids:
+            return 0
+        placeholders = ','.join(['%s'] * len(cv_ids))
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(f"DELETE FROM cv_evaluations WHERE id IN ({placeholders})", tuple(cv_ids))
+            return cursor.rowcount
+    
+    def delete_all_cv_evaluations(self, user_id: Optional[int] = None) -> int:
+        """Delete all CV evaluations"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            if user_id:
+                cursor.execute("SELECT COUNT(*) FROM cv_evaluations WHERE user_id = %s", (user_id,))
+                count = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM cv_evaluations WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("SELECT COUNT(*) FROM cv_evaluations")
+                count = cursor.fetchone()[0]
+                cursor.execute("DELETE FROM cv_evaluations")
+            return count
+    
+    def get_cv_count(self, user_id: Optional[int] = None) -> int:
+        """Get total number of CV evaluations"""
+        if user_id:
+            result = self.query_raw("SELECT COUNT(*) as cnt FROM cv_evaluations WHERE user_id = %s", (user_id,), one=True)
+        else:
+            result = self.query_raw("SELECT COUNT(*) as cnt FROM cv_evaluations", one=True)
+        return result['cnt'] if result else 0
+
     # ==================== User Methods ====================
     
     def create_user(
@@ -460,6 +600,45 @@ class DatabaseServicePostgres:
         self.execute_raw(
             "DELETE FROM sessions WHERE expires_at < %s",
             (datetime.now().isoformat(),)
+        )
+    
+    # ==================== User Settings Methods ====================
+    
+    def get_user_settings(self, user_id: int) -> Dict[str, str]:
+        """Get all settings for a user"""
+        rows = self.query_raw(
+            "SELECT setting_key, setting_value FROM user_settings WHERE user_id = %s",
+            (user_id,)
+        )
+        return {row['setting_key']: row['setting_value'] for row in rows} if rows else {}
+    
+    def get_user_setting(self, user_id: int, setting_key: str) -> Optional[str]:
+        """Get a specific setting for a user"""
+        result = self.query_raw(
+            "SELECT setting_value FROM user_settings WHERE user_id = %s AND setting_key = %s",
+            (user_id, setting_key),
+            one=True
+        )
+        return result['setting_value'] if result else None
+    
+    def save_user_setting(self, user_id: int, setting_key: str, setting_value: str, encrypted: bool = False):
+        """Save or update a user setting (upsert)"""
+        # PostgreSQL upsert with ON CONFLICT
+        self.execute_raw(
+            """INSERT INTO user_settings (user_id, setting_key, setting_value, encrypted, updated_at)
+               VALUES (%s, %s, %s, %s, %s)
+               ON CONFLICT (user_id, setting_key) 
+               DO UPDATE SET setting_value = EXCLUDED.setting_value, 
+                            encrypted = EXCLUDED.encrypted,
+                            updated_at = EXCLUDED.updated_at""",
+            (user_id, setting_key, setting_value, encrypted, datetime.now().isoformat())
+        )
+    
+    def delete_user_setting(self, user_id: int, setting_key: str):
+        """Delete a user setting"""
+        self.execute_raw(
+            "DELETE FROM user_settings WHERE user_id = %s AND setting_key = %s",
+            (user_id, setting_key)
         )
     
     def close(self):

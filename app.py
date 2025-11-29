@@ -16,7 +16,7 @@ from services.email_service import EmailService
 from services.database import DatabaseService
 from services.email_monitor import EmailMonitor, ManualResponseProcessor
 from services.auth_service import AuthService, login_required, admin_required
-from config.settings import SENDER_EMAIL, AI_PROVIDER
+from config.settings import SENDER_EMAIL, AI_PROVIDER, AUTO_START_MONITOR
 
 # Import AI services based on provider
 if AI_PROVIDER == "gemini":
@@ -311,11 +311,61 @@ def get_all_users():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ==================== User Settings API ====================
+
+@app.route('/api/user/settings', methods=['GET'])
+@login_required
+def get_user_settings():
+    """Get current user's settings"""
+    try:
+        settings = database.get_user_settings(request.current_user['id'])
+        if settings:
+            # Mask sensitive data
+            masked_settings = dict(settings)
+            if masked_settings.get('azure_openai_api_key'):
+                masked_settings['azure_openai_api_key'] = '***' + masked_settings['azure_openai_api_key'][-4:]
+            if masked_settings.get('gemini_api_key'):
+                masked_settings['gemini_api_key'] = '***' + masked_settings['gemini_api_key'][-4:]
+            if masked_settings.get('sender_password'):
+                masked_settings['sender_password'] = '********'
+            return jsonify({"success": True, "settings": masked_settings})
+        return jsonify({"success": True, "settings": None})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/user/settings', methods=['POST', 'PUT'])
+@login_required
+def save_user_settings():
+    """Save user settings"""
+    try:
+        data = request.json
+        settings_id = database.save_user_settings(request.current_user['id'], data)
+        return jsonify({
+            "success": True,
+            "message": "Cài đặt đã được lưu",
+            "settings_id": settings_id
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/user/settings/full', methods=['GET'])
+@login_required
+def get_user_settings_full():
+    """Get full settings (unmasked) for internal use"""
+    try:
+        settings = database.get_user_settings(request.current_user['id'])
+        return jsonify({"success": True, "settings": settings})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # ==================== Main Routes ====================
 
 @app.route('/')
 def index():
-    """Main page"""
+    """Main page - requires login"""
     return render_template('index.html')
 
 
@@ -326,18 +376,35 @@ def login_page():
 
 
 @app.route('/api/send-email', methods=['POST'])
+@login_required
 def send_email():
-    """Send an AI-generated email"""
+    """Send an AI-generated email with optional attachments"""
     try:
-        data = request.json
+        # Check if this is a multipart form (with attachments) or JSON
+        if request.content_type and 'multipart/form-data' in request.content_type:
+            # Handle form data with attachments
+            data = request.form.to_dict()
+            files = request.files.getlist('attachments')
+        else:
+            data = request.json
+            files = []
+        
+        # Get user settings for email
+        user_settings = database.get_user_settings(request.current_user['id'])
+        sender_email_config = user_settings.get('sender_email') if user_settings else SENDER_EMAIL
         
         sender_name = data.get('sender_name')
         recipient_name = data.get('recipient_name')
         recipient_email = data.get('recipient_email')
         purpose = data.get('purpose')
         tone = data.get('tone', 'professional')
+        language = data.get('language', 'vi')
         additional_context = data.get('additional_context')
-        notification_email = data.get('notification_email') or SENDER_EMAIL
+        notification_email = data.get('notification_email') or sender_email_config or SENDER_EMAIL
+        
+        # Check if custom subject/body provided (from preview)
+        custom_subject = data.get('custom_subject')
+        custom_body = data.get('custom_body')
         
         # Validate required fields
         if not all([sender_name, recipient_name, recipient_email, purpose]):
@@ -346,21 +413,44 @@ def send_email():
                 "error": "Missing required fields"
             }), 400
         
-        # Generate email using AI
-        generated_email = ai_agent.generate_email(
-            sender_name=sender_name,
-            recipient_name=recipient_name,
-            recipient_email=recipient_email,
-            purpose=purpose,
-            tone=tone,
-            additional_context=additional_context
-        )
+        # Generate email using AI or use custom content
+        if custom_subject and custom_body:
+            generated_email = {
+                'subject': custom_subject,
+                'body': custom_body
+            }
+        else:
+            generated_email = ai_agent.generate_email(
+                sender_name=sender_name,
+                recipient_name=recipient_name,
+                recipient_email=recipient_email,
+                purpose=purpose,
+                tone=tone,
+                language=language,
+                additional_context=additional_context
+            )
         
-        # Send the email
+        # Process attachments
+        attachments = []
+        for file in files:
+            if file and file.filename:
+                # Read file content
+                content = file.read()
+                # Get content type
+                content_type = file.content_type or 'application/octet-stream'
+                
+                attachments.append({
+                    'filename': file.filename,
+                    'content': content,
+                    'content_type': content_type
+                })
+        
+        # Send the email with attachments
         success = email_service.send_email(
             recipient_email=recipient_email,
             subject=generated_email['subject'],
-            body=generated_email['body']
+            body=generated_email['body'],
+            attachments=attachments if attachments else None
         )
         
         if success:
@@ -396,6 +486,7 @@ def send_email():
 
 
 @app.route('/api/preview-email', methods=['POST'])
+@login_required
 def preview_email():
     """Preview AI-generated email without sending"""
     try:
@@ -406,6 +497,7 @@ def preview_email():
         recipient_email = data.get('recipient_email')
         purpose = data.get('purpose')
         tone = data.get('tone', 'professional')
+        language = data.get('language', 'vi')
         additional_context = data.get('additional_context')
         
         if not all([sender_name, recipient_name, recipient_email, purpose]):
@@ -421,6 +513,7 @@ def preview_email():
             recipient_email=recipient_email,
             purpose=purpose,
             tone=tone,
+            language=language,
             additional_context=additional_context
         )
         
@@ -438,6 +531,7 @@ def preview_email():
 
 
 @app.route('/api/emails', methods=['GET'])
+@login_required
 def get_emails():
     """Get all tracked emails"""
     try:
@@ -464,6 +558,7 @@ def get_emails():
 
 
 @app.route('/api/emails/<int:email_id>', methods=['GET'])
+@login_required
 def get_email(email_id):
     """Get a specific email by ID"""
     try:
@@ -487,7 +582,171 @@ def get_email(email_id):
         }), 500
 
 
+@app.route('/api/emails/<int:email_id>', methods=['DELETE'])
+@login_required
+def delete_email(email_id):
+    """Delete a specific email by ID"""
+    try:
+        database.delete_email(email_id)
+        return jsonify({
+            "success": True,
+            "message": "Email deleted successfully"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/emails/delete-multiple', methods=['POST'])
+@login_required
+def delete_multiple_emails():
+    """Delete multiple emails by IDs"""
+    try:
+        data = request.json
+        email_ids = data.get('email_ids', [])
+        
+        if not email_ids:
+            return jsonify({
+                "success": False,
+                "error": "No email IDs provided"
+            }), 400
+        
+        deleted_count = database.delete_emails(email_ids)
+        return jsonify({
+            "success": True,
+            "message": f"Deleted {deleted_count} emails",
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/emails/delete-all', methods=['DELETE'])
+@login_required
+def delete_all_emails():
+    """Delete all sent emails"""
+    try:
+        deleted_count = database.delete_all_emails()
+        return jsonify({
+            "success": True,
+            "message": f"Deleted all {deleted_count} emails",
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/cv/delete-all', methods=['DELETE'])
+@login_required
+def delete_all_cv_evaluations():
+    """Delete all CV evaluations"""
+    try:
+        deleted_count = database.delete_all_cv_evaluations()
+        return jsonify({
+            "success": True,
+            "message": f"Deleted all {deleted_count} CV evaluations",
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/cv/<int:cv_id>', methods=['DELETE'])
+@login_required
+def delete_cv_evaluation(cv_id):
+    """Delete a specific CV evaluation by ID"""
+    try:
+        database.delete_cv_evaluation(cv_id)
+        return jsonify({
+            "success": True,
+            "message": "CV evaluation deleted successfully"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/cv/delete-multiple', methods=['POST'])
+@login_required
+def delete_multiple_cv_evaluations():
+    """Delete multiple CV evaluations by IDs"""
+    try:
+        data = request.json
+        cv_ids = data.get('cv_ids', [])
+        
+        if not cv_ids:
+            return jsonify({
+                "success": False,
+                "error": "No CV IDs provided"
+            }), 400
+        
+        deleted_count = database.delete_cv_evaluations(cv_ids)
+        return jsonify({
+            "success": True,
+            "message": f"Deleted {deleted_count} CV evaluations",
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/data/delete-all', methods=['DELETE'])
+@login_required
+def delete_all_data():
+    """Delete all emails and CV evaluations"""
+    try:
+        email_count = database.delete_all_emails()
+        cv_count = database.delete_all_cv_evaluations()
+        return jsonify({
+            "success": True,
+            "message": f"Deleted {email_count} emails and {cv_count} CV evaluations",
+            "deleted_emails": email_count,
+            "deleted_cvs": cv_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/data/stats', methods=['GET'])
+@login_required
+def get_data_stats():
+    """Get statistics about emails and CV evaluations"""
+    try:
+        email_count = database.get_email_count()
+        cv_count = database.get_cv_count()
+        return jsonify({
+            "success": True,
+            "email_count": email_count,
+            "cv_count": cv_count
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
 @app.route('/api/check-responses', methods=['POST'])
+@login_required
 def check_responses():
     """Check for responses once"""
     try:
@@ -512,6 +771,7 @@ def check_responses():
 
 
 @app.route('/api/check-imap', methods=['GET'])
+@login_required
 def check_imap():
     """Check IMAP connection status"""
     try:
@@ -526,6 +786,7 @@ def check_imap():
 
 
 @app.route('/api/monitor/start', methods=['POST'])
+@login_required
 def start_monitor():
     """Start the email monitoring service"""
     global monitor
@@ -558,6 +819,7 @@ def start_monitor():
 
 
 @app.route('/api/monitor/stop', methods=['POST'])
+@login_required
 def stop_monitor():
     """Stop the email monitoring service"""
     global monitor
@@ -580,6 +842,7 @@ def stop_monitor():
 
 
 @app.route('/api/monitor/status', methods=['GET'])
+@login_required
 def monitor_status():
     """Get monitor status"""
     global monitor
@@ -591,6 +854,7 @@ def monitor_status():
 
 
 @app.route('/api/analyze-response', methods=['POST'])
+@login_required
 def analyze_response():
     """Manually analyze a response"""
     try:
@@ -649,6 +913,7 @@ def events():
 # ==================== CV Evaluation API ====================
 
 @app.route('/api/cv/upload', methods=['POST'])
+@login_required
 def upload_cv_file():
     """Upload và trích xuất nội dung từ file CV"""
     try:
@@ -773,6 +1038,7 @@ def upload_cv_file():
 
 
 @app.route('/api/cv/evaluate', methods=['POST'])
+@login_required
 def evaluate_cv():
     """Đánh giá CV ứng viên"""
     try:
@@ -885,6 +1151,7 @@ def send_cv_invitation_email(cv_id, evaluation, candidate_name, candidate_email,
 
 
 @app.route('/api/cv/send-email/<int:cv_id>', methods=['POST'])
+@login_required
 def send_cv_email(cv_id):
     """Gửi/gửi lại email cho ứng viên"""
     try:
@@ -955,6 +1222,7 @@ def send_cv_email(cv_id):
 
 
 @app.route('/api/cv/allow-resend/<int:cv_id>', methods=['POST'])
+@login_required
 def allow_resend_cv_email(cv_id):
     """Cho phép gửi lại email cho CV (sau khi đã có phản hồi)"""
     try:
@@ -971,6 +1239,7 @@ def allow_resend_cv_email(cv_id):
 
 
 @app.route('/api/cv/list', methods=['GET'])
+@login_required
 def list_cv_evaluations():
     """Lấy danh sách tất cả CV đã đánh giá"""
     try:
@@ -987,6 +1256,7 @@ def list_cv_evaluations():
 
 
 @app.route('/api/cv/<int:cv_id>', methods=['GET'])
+@login_required
 def get_cv_evaluation(cv_id):
     """Lấy chi tiết một CV đánh giá"""
     try:
@@ -1016,6 +1286,7 @@ def get_cv_evaluation(cv_id):
 
 
 @app.route('/api/cv/preview-email', methods=['POST'])
+@login_required
 def preview_cv_email():
     """Xem trước email sẽ gửi cho ứng viên"""
     try:
@@ -1078,4 +1349,12 @@ if __name__ == '__main__':
     print("🚀 Starting Email AI Agent with Realtime WebSocket support...")
     print(f"🤖 AI Provider: {AI_PROVIDER.upper()}")
     print("📡 WebSocket enabled for instant notifications")
+    
+    # Auto-start monitor if configured
+    if AUTO_START_MONITOR:
+        print("🔄 Auto-starting email monitor...")
+        auto_start_monitor()
+    else:
+        print("ℹ️ Monitor will start on first WebSocket connection")
+    
     socketio.run(app, debug=True, port=5000, allow_unsafe_werkzeug=True)

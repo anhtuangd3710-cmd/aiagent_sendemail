@@ -41,9 +41,25 @@
                 <i class="fas fa-cog"></i>
                 <span>Cài đặt</span>
             </a>
+            <a href="#" class="nav-item" data-page="profile">
+                <i class="fas fa-user-circle"></i>
+                <span>Hồ sơ & API</span>
+            </a>
         </nav>
         
         <div class="sidebar-footer">
+            <div class="user-info" id="user-info">
+                <div class="user-avatar">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div class="user-details">
+                    <span class="user-name" id="user-display-name">Chưa đăng nhập</span>
+                    <span class="user-email" id="user-display-email"></span>
+                </div>
+                <button class="btn-logout" id="logout-btn" title="Đăng xuất">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
             <div class="monitor-status" id="monitor-status">
                 <span class="status-dot"></span>
                 <span class="status-text">Đang dừng</span>
@@ -153,8 +169,69 @@
                                     </div>
                                 </div>
                                 <div class="form-group">
+                                    <label for="email-language">Ngôn ngữ email</label>
+                                    <div class="language-selector">
+                                        <label class="language-option">
+                                            <input type="radio" name="language" value="vi" checked>
+                                            <span class="language-card">
+                                                <span class="flag-icon">🇻🇳</span>
+                                                <span>Tiếng Việt</span>
+                                            </span>
+                                        </label>
+                                        <label class="language-option">
+                                            <input type="radio" name="language" value="en">
+                                            <span class="language-card">
+                                                <span class="flag-icon">🇬🇧</span>
+                                                <span>English</span>
+                                            </span>
+                                        </label>
+                                        <label class="language-option">
+                                            <input type="radio" name="language" value="ja">
+                                            <span class="language-card">
+                                                <span class="flag-icon">🇯🇵</span>
+                                                <span>日本語</span>
+                                            </span>
+                                        </label>
+                                        <label class="language-option">
+                                            <input type="radio" name="language" value="zh">
+                                            <span class="language-card">
+                                                <span class="flag-icon">🇨🇳</span>
+                                                <span>中文</span>
+                                            </span>
+                                        </label>
+                                        <label class="language-option">
+                                            <input type="radio" name="language" value="ko">
+                                            <span class="language-card">
+                                                <span class="flag-icon">🇰🇷</span>
+                                                <span>한국어</span>
+                                            </span>
+                                        </label>
+                                        <label class="language-option">
+                                            <input type="radio" name="language" value="fr">
+                                            <span class="language-card">
+                                                <span class="flag-icon">🇫🇷</span>
+                                                <span>Français</span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="form-group">
                                     <label for="additional-context">Thông tin bổ sung</label>
                                     <textarea id="additional-context" rows="2" placeholder="Thêm bất kỳ thông tin nào có thể hữu ích cho AI..."></textarea>
+                                </div>
+                                
+                                <!-- File Attachments -->
+                                <div class="form-group">
+                                    <label><i class="fas fa-paperclip"></i> Đính kèm file</label>
+                                    <div class="file-upload-area" id="file-upload-area">
+                                        <input type="file" id="email-attachments" multiple hidden>
+                                        <div class="file-upload-content" onclick="document.getElementById('email-attachments').click()">
+                                            <i class="fas fa-cloud-upload-alt"></i>
+                                            <p>Kéo thả file vào đây hoặc <span class="browse-link">chọn file</span></p>
+                                            <small>Hỗ trợ: PDF, Word, Excel, Images, Text (Tối đa 10MB/file)</small>
+                                        </div>
+                                    </div>
+                                    <div class="attachment-list" id="attachment-list"></div>
                                 </div>
                             </div>
                         </div>
@@ -191,6 +268,7 @@
                                         <label>Nội dung:</label>
                                         <div id="preview-body-text"></div>
                                     </div>
+                                    <div id="preview-attachments"></div>
                                 </div>
                             </div>
                         </div>
@@ -512,6 +590,294 @@
                                         <p>Hệ thống giám sát phản hồi realtime qua WebSocket, thông báo ngay khi có email mới.</p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Profile Page -->
+            <section class="page" id="page-profile">
+                <div class="profile-container">
+                    <!-- User Profile Card -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-user-circle"></i> Thông tin cá nhân</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="profile-info">
+                                <div class="profile-avatar">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div class="profile-details">
+                                    <div class="form-group">
+                                        <label>Họ và tên</label>
+                                        <input type="text" id="profile-fullname" placeholder="Nhập họ và tên">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Username <small>(không thể thay đổi)</small></label>
+                                        <input type="text" id="profile-username" disabled class="input-disabled">
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Email đăng nhập <small>(không thể thay đổi)</small></label>
+                                        <input type="email" id="profile-email" disabled class="input-disabled">
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" id="save-profile-btn">
+                                <i class="fas fa-save"></i> Lưu thông tin
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Email Configuration -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-envelope-open-text"></i> Cấu hình Email gửi</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                <div class="alert-content">
+                                    <strong>Cấu hình email dùng để gửi email. Với Gmail, bạn cần sử dụng App Password.</strong>
+                                    <details class="app-password-guide">
+                                        <summary><i class="fas fa-question-circle"></i> Hướng dẫn lấy App Password</summary>
+                                        <div class="guide-content">
+                                            <div class="guide-section">
+                                                <h5>📧 Gmail:</h5>
+                                                <ol>
+                                                    <li>Truy cập <a href="https://myaccount.google.com/security" target="_blank">myaccount.google.com/security</a></li>
+                                                    <li>Bật <strong>Xác minh 2 bước</strong> (nếu chưa bật)</li>
+                                                    <li>Truy cập <a href="https://myaccount.google.com/apppasswords" target="_blank">myaccount.google.com/apppasswords</a></li>
+                                                    <li>Chọn "Mail" và thiết bị, nhấn "Tạo"</li>
+                                                    <li>Sao chép mật khẩu 16 ký tự (bỏ khoảng trắng)</li>
+                                                </ol>
+                                            </div>
+                                            <div class="guide-section">
+                                                <h5>📧 Outlook/Hotmail:</h5>
+                                                <ol>
+                                                    <li>Truy cập <a href="https://account.microsoft.com/security" target="_blank">account.microsoft.com/security</a></li>
+                                                    <li>Bật Xác minh 2 bước</li>
+                                                    <li>Nhấn "Tạo mật khẩu ứng dụng mới"</li>
+                                                    <li>Sao chép mật khẩu được tạo</li>
+                                                </ol>
+                                            </div>
+                                            <div class="guide-section">
+                                                <h5>📧 Yahoo:</h5>
+                                                <ol>
+                                                    <li>Truy cập <a href="https://login.yahoo.com/account/security" target="_blank">login.yahoo.com/account/security</a></li>
+                                                    <li>Bật Xác minh 2 bước</li>
+                                                    <li>Nhấn "Tạo mật khẩu ứng dụng"</li>
+                                                    <li>Chọn "Ứng dụng khác", nhập tên, nhấn "Tạo"</li>
+                                                    <li>Sao chép mật khẩu được tạo</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </details>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="setting-sender-email">Email gửi <span class="required">*</span></label>
+                                    <input type="email" id="setting-sender-email" placeholder="your-email@gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="setting-sender-password">App Password <span class="required">*</span></label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="setting-sender-password" placeholder="xxxx xxxx xxxx xxxx">
+                                        <button type="button" class="btn-toggle-password" onclick="togglePassword('setting-sender-password')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="setting-email-host">SMTP Host</label>
+                                    <input type="text" id="setting-email-host" placeholder="smtp.gmail.com" value="smtp.gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="setting-email-port">SMTP Port</label>
+                                    <input type="number" id="setting-email-port" placeholder="587" value="587">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="setting-imap-host">IMAP Host</label>
+                                    <input type="text" id="setting-imap-host" placeholder="imap.gmail.com" value="imap.gmail.com">
+                                </div>
+                                <div class="form-group">
+                                    <label for="setting-imap-port">IMAP Port</label>
+                                    <input type="number" id="setting-imap-port" placeholder="993" value="993">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AI Provider Configuration -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-brain"></i> Cấu hình AI Provider</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label>Chọn AI Provider</label>
+                                <div class="ai-provider-selector">
+                                    <label class="provider-option">
+                                        <input type="radio" name="ai-provider" value="azure" checked>
+                                        <span class="provider-card">
+                                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/f/fa/Microsoft_Azure.svg/150px-Microsoft_Azure.svg.png" alt="Azure" style="height: 30px;">
+                                            <span>Azure OpenAI</span>
+                                        </span>
+                                    </label>
+                                    <label class="provider-option">
+                                        <input type="radio" name="ai-provider" value="gemini">
+                                        <span class="provider-card">
+                                            <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/8/8a/Google_Gemini_logo.svg/180px-Google_Gemini_logo.svg.png" alt="Gemini" style="height: 30px;">
+                                            <span>Google Gemini</span>
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <!-- Azure OpenAI Settings -->
+                            <div class="ai-settings" id="azure-settings">
+                                <h4><i class="fab fa-microsoft"></i> Azure OpenAI Settings</h4>
+                                <div class="form-group">
+                                    <label for="setting-azure-endpoint">Endpoint URL</label>
+                                    <input type="url" id="setting-azure-endpoint" placeholder="https://your-resource.openai.azure.com/">
+                                </div>
+                                <div class="form-group">
+                                    <label for="setting-azure-key">API Key</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="setting-azure-key" placeholder="Nhập Azure OpenAI API Key">
+                                        <button type="button" class="btn-toggle-password" onclick="togglePassword('setting-azure-key')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="setting-azure-deployment">Deployment Name</label>
+                                        <input type="text" id="setting-azure-deployment" placeholder="gpt-4">
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="setting-azure-version">API Version</label>
+                                        <input type="text" id="setting-azure-version" placeholder="2024-02-15-preview" value="2024-02-15-preview">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Google Gemini Settings -->
+                            <div class="ai-settings" id="gemini-settings" style="display: none;">
+                                <h4><i class="fab fa-google"></i> Google Gemini Settings</h4>
+                                <div class="form-group">
+                                    <label for="setting-gemini-key">API Key</label>
+                                    <div class="password-input-group">
+                                        <input type="password" id="setting-gemini-key" placeholder="Nhập Gemini API Key">
+                                        <button type="button" class="btn-toggle-password" onclick="togglePassword('setting-gemini-key')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                    </div>
+                                    <small>Lấy API key tại: <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></small>
+                                </div>
+                                <div class="form-group">
+                                    <label for="setting-gemini-model">Model</label>
+                                    <select id="setting-gemini-model">
+                                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (Nhanh)</option>
+                                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (Chất lượng cao)</option>
+                                        <option value="gemini-pro">Gemini Pro</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Save Settings Button -->
+                    <div class="card">
+                        <div class="card-body" style="text-align: center;">
+                            <button class="btn btn-primary btn-lg" id="save-settings-btn">
+                                <i class="fas fa-save"></i> Lưu tất cả cài đặt
+                            </button>
+                            <p class="settings-note">
+                                <i class="fas fa-shield-alt"></i> 
+                                Các API key và mật khẩu được mã hóa và lưu trữ an toàn.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Change Password -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2><i class="fas fa-key"></i> Đổi mật khẩu</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-group">
+                                <label for="current-password">Mật khẩu hiện tại</label>
+                                <input type="password" id="current-password" placeholder="Nhập mật khẩu hiện tại">
+                            </div>
+                            <div class="form-group">
+                                <label for="new-password">Mật khẩu mới</label>
+                                <input type="password" id="new-password" placeholder="Nhập mật khẩu mới">
+                            </div>
+                            <div class="form-group">
+                                <label for="confirm-new-password">Xác nhận mật khẩu mới</label>
+                                <input type="password" id="confirm-new-password" placeholder="Nhập lại mật khẩu mới">
+                            </div>
+                            <button class="btn btn-secondary" id="change-password-btn">
+                                <i class="fas fa-key"></i> Đổi mật khẩu
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Data Management -->
+                    <div class="card card-danger">
+                        <div class="card-header">
+                            <h2><i class="fas fa-trash-alt"></i> Quản lý dữ liệu</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-warning">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <span>Cảnh báo: Các thao tác xóa không thể hoàn tác!</span>
+                            </div>
+                            
+                            <!-- Delete specific items -->
+                            <div class="data-management-section">
+                                <h4><i class="fas fa-envelope"></i> Lịch sử Email đã gửi</h4>
+                                <p class="text-muted">Số email đã gửi: <strong id="email-count">0</strong></p>
+                                <div class="btn-group">
+                                    <button class="btn btn-outline-danger" id="delete-selected-emails-btn" disabled>
+                                        <i class="fas fa-trash"></i> Xóa đã chọn
+                                    </button>
+                                    <button class="btn btn-danger" id="delete-all-emails-btn">
+                                        <i class="fas fa-trash-alt"></i> Xóa tất cả Email
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <hr class="divider">
+                            
+                            <div class="data-management-section">
+                                <h4><i class="fas fa-file-user"></i> Lịch sử đánh giá CV</h4>
+                                <p class="text-muted">Số CV đã đánh giá: <strong id="cv-count">0</strong></p>
+                                <div class="btn-group">
+                                    <button class="btn btn-outline-danger" id="delete-selected-cvs-btn" disabled>
+                                        <i class="fas fa-trash"></i> Xóa đã chọn
+                                    </button>
+                                    <button class="btn btn-danger" id="delete-all-cvs-btn">
+                                        <i class="fas fa-trash-alt"></i> Xóa tất cả CV
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <hr class="divider">
+                            
+                            <div class="data-management-section">
+                                <h4><i class="fas fa-database"></i> Xóa toàn bộ dữ liệu</h4>
+                                <p class="text-muted">Xóa tất cả email đã gửi và CV đã đánh giá</p>
+                                <button class="btn btn-danger btn-lg" id="delete-all-data-btn">
+                                    <i class="fas fa-exclamation-triangle"></i> Xóa toàn bộ dữ liệu
+                                </button>
                             </div>
                         </div>
                     </div>

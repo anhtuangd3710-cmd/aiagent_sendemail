@@ -50,6 +50,9 @@ CHECK_INTERVAL = int(os.getenv("CHECK_INTERVAL", 10))
 # Realtime mode - sử dụng IMAP IDLE nếu có thể
 REALTIME_MODE = os.getenv("REALTIME_MODE", "true").lower() == "true"
 
+# Auto-start monitor when app starts (no user action needed)
+AUTO_START_MONITOR = os.getenv("AUTO_START_MONITOR", "true").lower() == "true"
+
 # ===========================================
 # Database Configuration
 # ===========================================

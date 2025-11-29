@@ -5,8 +5,13 @@ import smtplib
 import imaplib
 import email
 import socket
+import os
+import mimetypes
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.application import MIMEApplication
+from email import encoders
 from email.header import decode_header
 from typing import Optional, List, Dict
 import logging
@@ -37,30 +42,39 @@ class EmailService:
         recipient_email: str, 
         subject: str, 
         body: str,
-        is_html: bool = False
+        is_html: bool = False,
+        attachments: List[Dict] = None
     ) -> bool:
         """
-        Send an email to the recipient
+        Send an email to the recipient with optional attachments
         
         Args:
             recipient_email: Email address of recipient (Person B)
             subject: Email subject
             body: Email body content
             is_html: Whether the body is HTML formatted
+            attachments: List of attachment dicts with 'filename', 'content' (bytes), 'content_type'
             
         Returns:
             bool: True if email sent successfully, False otherwise
         """
         try:
             # Create message
-            message = MIMEMultipart("alternative")
+            message = MIMEMultipart("mixed")
             message["Subject"] = subject
             message["From"] = self.sender_email
             message["To"] = recipient_email
             
-            # Attach body
+            # Create the body part
+            body_part = MIMEMultipart("alternative")
             content_type = "html" if is_html else "plain"
-            message.attach(MIMEText(body, content_type))
+            body_part.attach(MIMEText(body, content_type))
+            message.attach(body_part)
+            
+            # Add attachments if provided
+            if attachments:
+                for attachment in attachments:
+                    self._add_attachment(message, attachment)
             
             # Connect and send
             with smtplib.SMTP(EMAIL_HOST, EMAIL_PORT) as server:
@@ -72,12 +86,51 @@ class EmailService:
                     message.as_string()
                 )
                 
-            logger.info(f"Email sent successfully to {recipient_email}")
+            attachment_count = len(attachments) if attachments else 0
+            logger.info(f"Email sent successfully to {recipient_email} with {attachment_count} attachment(s)")
             return True
             
         except Exception as e:
             logger.error(f"Failed to send email: {str(e)}")
             return False
+    
+    def _add_attachment(self, message: MIMEMultipart, attachment: Dict):
+        """Add an attachment to the email message"""
+        try:
+            filename = attachment.get('filename', 'attachment')
+            content = attachment.get('content')  # bytes
+            content_type = attachment.get('content_type', 'application/octet-stream')
+            
+            if content is None:
+                logger.warning(f"Attachment {filename} has no content, skipping")
+                return
+            
+            # Determine the main and sub type
+            maintype, subtype = content_type.split('/', 1) if '/' in content_type else ('application', 'octet-stream')
+            
+            if maintype == 'text':
+                # Text files
+                att = MIMEText(content.decode('utf-8', errors='ignore'), _subtype=subtype)
+            elif maintype == 'application':
+                att = MIMEApplication(content, _subtype=subtype)
+            else:
+                # Generic binary
+                att = MIMEBase(maintype, subtype)
+                att.set_payload(content)
+                encoders.encode_base64(att)
+            
+            # Add header with filename
+            att.add_header(
+                'Content-Disposition',
+                'attachment',
+                filename=filename
+            )
+            
+            message.attach(att)
+            logger.info(f"Attached file: {filename} ({content_type})")
+            
+        except Exception as e:
+            logger.error(f"Failed to add attachment: {str(e)}")
     
     def get_responses(
         self, 

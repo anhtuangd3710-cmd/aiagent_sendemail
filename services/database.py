@@ -79,6 +79,43 @@ class DatabaseService:
                 )
             """)
             
+            # Table for user settings (API keys, email config per user)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE NOT NULL,
+                    
+                    -- AI Provider settings
+                    ai_provider TEXT DEFAULT 'azure',
+                    
+                    -- Azure OpenAI
+                    azure_openai_endpoint TEXT,
+                    azure_openai_api_key TEXT,
+                    azure_openai_deployment_name TEXT,
+                    azure_openai_api_version TEXT DEFAULT '2024-02-15-preview',
+                    
+                    -- Google Gemini
+                    gemini_api_key TEXT,
+                    gemini_model TEXT DEFAULT 'gemini-1.5-flash',
+                    
+                    -- Email Configuration
+                    sender_email TEXT,
+                    sender_password TEXT,
+                    email_host TEXT DEFAULT 'smtp.gmail.com',
+                    email_port INTEGER DEFAULT 587,
+                    imap_host TEXT DEFAULT 'imap.gmail.com',
+                    imap_port INTEGER DEFAULT 993,
+                    
+                    -- Other settings
+                    check_interval INTEGER DEFAULT 10,
+                    
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            
             conn.commit()
             logger.info("Database initialized successfully")
     
@@ -178,12 +215,63 @@ class DatabaseService:
             cursor.execute("""
                 SELECT se.*, r.response_body, r.analysis, r.received_at as response_received_at
                 FROM sent_emails se
-                LEFT JOIN responses r ON se.id = r.sent_email_id
+                LEFT JOIN (
+                    SELECT sent_email_id, response_body, analysis, received_at,
+                           ROW_NUMBER() OVER (PARTITION BY sent_email_id ORDER BY received_at DESC) as rn
+                    FROM responses
+                ) r ON se.id = r.sent_email_id AND r.rn = 1
                 ORDER BY se.sent_at DESC
             """)
             rows = cursor.fetchall()
             return [dict(row) for row in rows]
     
+    def delete_email(self, email_id: int):
+        """Delete a sent email and its responses"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Delete responses first
+            cursor.execute("DELETE FROM responses WHERE sent_email_id = ?", (email_id,))
+            # Delete the email
+            cursor.execute("DELETE FROM sent_emails WHERE id = ?", (email_id,))
+            conn.commit()
+            logger.info(f"Deleted email with ID: {email_id}")
+    
+    def delete_emails(self, email_ids: List[int]) -> int:
+        """Delete multiple emails by IDs"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join('?' * len(email_ids))
+            # Delete responses first
+            cursor.execute(f"DELETE FROM responses WHERE sent_email_id IN ({placeholders})", email_ids)
+            # Delete emails
+            cursor.execute(f"DELETE FROM sent_emails WHERE id IN ({placeholders})", email_ids)
+            conn.commit()
+            deleted_count = cursor.rowcount
+            logger.info(f"Deleted {deleted_count} emails")
+            return deleted_count
+    
+    def delete_all_emails(self) -> int:
+        """Delete all sent emails and responses"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Count emails first
+            cursor.execute("SELECT COUNT(*) FROM sent_emails")
+            count = cursor.fetchone()[0]
+            # Delete all responses
+            cursor.execute("DELETE FROM responses")
+            # Delete all emails
+            cursor.execute("DELETE FROM sent_emails")
+            conn.commit()
+            logger.info(f"Deleted all {count} emails")
+            return count
+    
+    def get_email_count(self) -> int:
+        """Get total number of sent emails"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM sent_emails")
+            return cursor.fetchone()[0]
+
     # ==================== CV Evaluation Methods ====================
     
     def save_cv_evaluation(
@@ -311,6 +399,45 @@ class DatabaseService:
             """, (datetime.now().isoformat(), cv_id))
             conn.commit()
     
+    def delete_cv_evaluation(self, cv_id: int):
+        """Delete a CV evaluation"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM cv_evaluations WHERE id = ?", (cv_id,))
+            conn.commit()
+            logger.info(f"Deleted CV evaluation with ID: {cv_id}")
+    
+    def delete_cv_evaluations(self, cv_ids: List[int]) -> int:
+        """Delete multiple CV evaluations by IDs"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            placeholders = ','.join('?' * len(cv_ids))
+            cursor.execute(f"DELETE FROM cv_evaluations WHERE id IN ({placeholders})", cv_ids)
+            conn.commit()
+            deleted_count = cursor.rowcount
+            logger.info(f"Deleted {deleted_count} CV evaluations")
+            return deleted_count
+    
+    def delete_all_cv_evaluations(self) -> int:
+        """Delete all CV evaluations"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Count first
+            cursor.execute("SELECT COUNT(*) FROM cv_evaluations")
+            count = cursor.fetchone()[0]
+            # Delete all
+            cursor.execute("DELETE FROM cv_evaluations")
+            conn.commit()
+            logger.info(f"Deleted all {count} CV evaluations")
+            return count
+    
+    def get_cv_count(self) -> int:
+        """Get total number of CV evaluations"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM cv_evaluations")
+            return cursor.fetchone()[0]
+
     # ==================== Raw Query Methods (for Auth Service) ====================
     
     def execute_raw(self, query: str, params: tuple = None):
@@ -339,4 +466,93 @@ class DatabaseService:
             cursor.execute(query, params or ())
             conn.commit()
             return cursor.lastrowid
+    
+    # ==================== User Settings Methods ====================
+    
+    def get_user_settings(self, user_id: int) -> Optional[Dict]:
+        """Get user settings by user ID"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def save_user_settings(self, user_id: int, settings: Dict) -> int:
+        """Save or update user settings"""
+        existing = self.get_user_settings(user_id)
+        
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            
+            if existing:
+                # Update existing settings
+                update_fields = []
+                values = []
+                
+                allowed_fields = [
+                    'ai_provider', 'azure_openai_endpoint', 'azure_openai_api_key',
+                    'azure_openai_deployment_name', 'azure_openai_api_version',
+                    'gemini_api_key', 'gemini_model',
+                    'sender_email', 'sender_password',
+                    'email_host', 'email_port', 'imap_host', 'imap_port',
+                    'check_interval'
+                ]
+                
+                for field in allowed_fields:
+                    if field in settings:
+                        update_fields.append(f"{field} = ?")
+                        values.append(settings[field])
+                
+                if update_fields:
+                    update_fields.append("updated_at = ?")
+                    values.append(datetime.now().isoformat())
+                    values.append(user_id)
+                    
+                    cursor.execute(f"""
+                        UPDATE user_settings 
+                        SET {', '.join(update_fields)}
+                        WHERE user_id = ?
+                    """, tuple(values))
+                    conn.commit()
+                    return existing['id']
+            else:
+                # Insert new settings
+                cursor.execute("""
+                    INSERT INTO user_settings (
+                        user_id, ai_provider,
+                        azure_openai_endpoint, azure_openai_api_key,
+                        azure_openai_deployment_name, azure_openai_api_version,
+                        gemini_api_key, gemini_model,
+                        sender_email, sender_password,
+                        email_host, email_port, imap_host, imap_port,
+                        check_interval
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    user_id,
+                    settings.get('ai_provider', 'azure'),
+                    settings.get('azure_openai_endpoint'),
+                    settings.get('azure_openai_api_key'),
+                    settings.get('azure_openai_deployment_name'),
+                    settings.get('azure_openai_api_version', '2024-02-15-preview'),
+                    settings.get('gemini_api_key'),
+                    settings.get('gemini_model', 'gemini-1.5-flash'),
+                    settings.get('sender_email'),
+                    settings.get('sender_password'),
+                    settings.get('email_host', 'smtp.gmail.com'),
+                    settings.get('email_port', 587),
+                    settings.get('imap_host', 'imap.gmail.com'),
+                    settings.get('imap_port', 993),
+                    settings.get('check_interval', 10)
+                ))
+                conn.commit()
+                return cursor.lastrowid
+    
+    def delete_user_settings(self, user_id: int):
+        """Delete user settings"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
+            conn.commit()
+
 

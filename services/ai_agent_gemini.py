@@ -64,6 +64,7 @@ class AIAgentGemini:
         recipient_email: str,
         purpose: str,
         tone: str = "professional",
+        language: str = "vi",
         additional_context: Optional[str] = None
     ) -> Dict[str, str]:
         """
@@ -75,41 +76,112 @@ class AIAgentGemini:
             recipient_email: Email of person B
             purpose: The purpose/request for the email
             tone: Tone of the email (professional, friendly, formal, casual)
+            language: Language code (vi, en, ja, zh, ko, fr)
             additional_context: Any additional context for the email
             
         Returns:
             Dictionary with 'subject' and 'body' keys
         """
+        # Tone mapping for different languages
         tone_map = {
-            'professional': 'chuyên nghiệp, lịch sự',
-            'friendly': 'thân thiện, gần gũi',
-            'formal': 'trang trọng, nghiêm túc',
-            'casual': 'thường ngày, thoải mái'
+            'vi': {
+                'professional': 'chuyên nghiệp, lịch sự',
+                'friendly': 'thân thiện, gần gũi',
+                'formal': 'trang trọng, nghiêm túc',
+                'casual': 'thường ngày, thoải mái'
+            },
+            'en': {
+                'professional': 'professional and polite',
+                'friendly': 'friendly and warm',
+                'formal': 'formal and serious',
+                'casual': 'casual and relaxed'
+            },
+            'ja': {
+                'professional': 'プロフェッショナルで丁寧',
+                'friendly': 'フレンドリーで親しみやすい',
+                'formal': 'フォーマルで真剣',
+                'casual': 'カジュアルでリラックス'
+            },
+            'zh': {
+                'professional': '专业且礼貌',
+                'friendly': '友好且亲切',
+                'formal': '正式且严肃',
+                'casual': '随意且轻松'
+            },
+            'ko': {
+                'professional': '전문적이고 예의 바른',
+                'friendly': '친근하고 따뜻한',
+                'formal': '격식 있고 진지한',
+                'casual': '캐주얼하고 편안한'
+            },
+            'fr': {
+                'professional': 'professionnel et poli',
+                'friendly': 'amical et chaleureux',
+                'formal': 'formel et sérieux',
+                'casual': 'décontracté et détendu'
+            }
         }
-        tone_vietnamese = tone_map.get(tone, 'chuyên nghiệp')
         
-        prompt = f"""Bạn là một trợ lý viết email chuyên nghiệp bằng tiếng Việt. Nhiệm vụ của bạn là soạn email rõ ràng, hiệu quả theo yêu cầu của người dùng.
+        # Language instructions
+        language_instructions = {
+            'vi': {
+                'name': 'tiếng Việt',
+                'greeting': 'Sử dụng lời chào và kết thúc phù hợp với văn hóa Việt Nam',
+                'write_in': 'LUÔN LUÔN viết bằng tiếng Việt'
+            },
+            'en': {
+                'name': 'English',
+                'greeting': 'Use appropriate English greetings and closings',
+                'write_in': 'ALWAYS write in English'
+            },
+            'ja': {
+                'name': '日本語',
+                'greeting': '日本のビジネス文化に適した挨拶と締めくくりを使用してください',
+                'write_in': '必ず日本語で書いてください'
+            },
+            'zh': {
+                'name': '中文',
+                'greeting': '使用符合中国文化的问候语和结束语',
+                'write_in': '始终使用中文写作'
+            },
+            'ko': {
+                'name': '한국어',
+                'greeting': '한국 비즈니스 문화에 적합한 인사말과 맺음말을 사용하세요',
+                'write_in': '항상 한국어로 작성하세요'
+            },
+            'fr': {
+                'name': 'français',
+                'greeting': 'Utilisez des salutations et formules de politesse appropriées à la culture française',
+                'write_in': 'Écrivez TOUJOURS en français'
+            }
+        }
+        
+        lang = language if language in language_instructions else 'vi'
+        lang_info = language_instructions[lang]
+        tone_text = tone_map.get(lang, tone_map['en']).get(tone, 'professional')
+        
+        prompt = f"""You are a professional email writing assistant. Your task is to compose clear, effective emails in {lang_info['name']}.
 
-Khi viết email:
-1. Sử dụng lời chào và kết thúc phù hợp với văn hóa Việt Nam
-2. Ngắn gọn nhưng đầy đủ thông tin
-3. Phù hợp với giọng điệu yêu cầu
-4. Bao gồm tất cả thông tin cần thiết
-5. Dễ đọc và dễ trả lời
-6. LUÔN LUÔN viết bằng tiếng Việt
+When writing the email:
+1. {lang_info['greeting']}
+2. Be concise but complete with information
+3. Match the requested tone
+4. Include all necessary information
+5. Easy to read and reply to
+6. {lang_info['write_in']}
 
-Hãy viết một email bằng tiếng Việt với các thông tin sau:
+Write an email in {lang_info['name']} with the following information:
 
-Người gửi: {sender_name}
-Người nhận: {recipient_name} ({recipient_email})
-Mục đích: {purpose}
-Giọng điệu: {tone_vietnamese}
-{f'Thông tin bổ sung: {additional_context}' if additional_context else ''}
+Sender: {sender_name}
+Recipient: {recipient_name} ({recipient_email})
+Purpose: {purpose}
+Tone: {tone_text}
+{f'Additional information: {additional_context}' if additional_context else ''}
 
-Tạo một email hoàn chỉnh bằng TIẾNG VIỆT với tiêu đề và nội dung phù hợp.
+Create a complete email in {lang_info['name']} with appropriate subject and body.
 
-Trả về kết quả CHÍNH XÁC dưới dạng JSON với format sau (không có text khác):
-{{"subject": "Tiêu đề email", "body": "Nội dung email"}}"""
+Return the result EXACTLY in JSON format as follows (no other text):
+{{"subject": "Email subject in {lang_info['name']}", "body": "Email body in {lang_info['name']}"}}"""
 
         try:
             response = self.model.generate_content(prompt)

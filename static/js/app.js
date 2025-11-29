@@ -1,6 +1,6 @@
 /**
  * Email AI Agent - Frontend JavaScript
- * Modern, responsive UI interactions
+ * Modern, responsive UI interactions with Authentication
  */
 
 // API Base URL
@@ -14,6 +14,7 @@ let cvEvaluations = [];
 let monitorRunning = false;
 let socket = null;
 let wsConnected = false;
+let currentUser = null;
 
 // DOM Elements
 const pageTitle = document.getElementById('page-title');
@@ -22,18 +23,132 @@ const navItems = document.querySelectorAll('.nav-item');
 const pages = document.querySelectorAll('.page');
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check authentication first
+    const isAuthenticated = await checkAuth();
+    
+    if (!isAuthenticated) {
+        showLoginRequired();
+        return;
+    }
+    
     initNavigation();
     initCompose();
     initInbox();
     initMonitor();
     initModals();
     initCvEvaluation();
-    initWebSocket();  // Sử dụng WebSocket thay vì SSE
+    initProfile();
+    initWebSocket();
     loadEmails();
     loadCvEvaluations();
     checkMonitorStatus();
+    loadUserSettings();
 });
+
+// ==================== Authentication ====================
+
+async function checkAuth() {
+    const token = localStorage.getItem('auth_token');
+    if (!token) {
+        return false;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE}/api/auth/me`, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success && data.user) {
+            currentUser = data.user;
+            updateUserDisplay();
+            return true;
+        }
+        
+        // Token invalid, clear it
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user');
+        return false;
+    } catch (error) {
+        console.error('Auth check failed:', error);
+        return false;
+    }
+}
+
+function updateUserDisplay() {
+    if (currentUser) {
+        const nameEl = document.getElementById('user-display-name');
+        const emailEl = document.getElementById('user-display-email');
+        
+        if (nameEl) nameEl.textContent = currentUser.full_name || currentUser.username;
+        if (emailEl) emailEl.textContent = currentUser.email;
+        
+        // Update profile form
+        const profileUsername = document.getElementById('profile-username');
+        const profileFullname = document.getElementById('profile-fullname');
+        const profileEmail = document.getElementById('profile-email');
+        
+        if (profileUsername) profileUsername.value = currentUser.username;
+        if (profileFullname) profileFullname.value = currentUser.full_name || '';
+        if (profileEmail) profileEmail.value = currentUser.email;
+    }
+}
+
+function showLoginRequired() {
+    const overlay = document.createElement('div');
+    overlay.className = 'login-required-overlay';
+    overlay.innerHTML = `
+        <div class="login-required-content">
+            <i class="fas fa-lock"></i>
+            <h2>Yêu cầu đăng nhập</h2>
+            <p>Vui lòng đăng nhập để sử dụng Email AI Agent</p>
+            <a href="/login" class="btn btn-primary">
+                <i class="fas fa-sign-in-alt"></i> Đăng nhập
+            </a>
+        </div>
+    `;
+    document.body.appendChild(overlay);
+}
+
+async function logout() {
+    const token = localStorage.getItem('auth_token');
+    
+    try {
+        await fetch(`${API_BASE}/api/auth/logout`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            credentials: 'include'
+        });
+    } catch (error) {
+        console.error('Logout error:', error);
+    }
+    
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user');
+    window.location.href = '/login';
+}
+
+// Add auth header to all fetch requests
+function authFetch(url, options = {}) {
+    const token = localStorage.getItem('auth_token');
+    
+    return fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        credentials: 'include'
+    });
+}
 
 // ==================== Navigation ====================
 
@@ -45,6 +160,12 @@ function initNavigation() {
             navigateTo(page);
         });
     });
+    
+    // Logout button
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', logout);
+    }
 }
 
 function navigateTo(page) {
@@ -64,7 +185,8 @@ function navigateTo(page) {
         inbox: { title: 'Email Đã Gửi', subtitle: 'Quản lý và theo dõi các email đã gửi' },
         cv: { title: 'Đánh giá CV', subtitle: 'AI đánh giá CV ứng viên và tự động gửi thư mời' },
         monitor: { title: 'Giám sát phản hồi', subtitle: 'Theo dõi và phân tích phản hồi tự động' },
-        settings: { title: 'Cài đặt', subtitle: 'Cấu hình và hướng dẫn sử dụng' }
+        settings: { title: 'Cài đặt', subtitle: 'Cấu hình và hướng dẫn sử dụng' },
+        profile: { title: 'Hồ sơ & API Keys', subtitle: 'Quản lý thông tin cá nhân và cấu hình API' }
     };
     
     if (titles[page]) {
@@ -78,6 +200,10 @@ function navigateTo(page) {
     }
     if (page === 'cv') {
         loadCvEvaluations();
+    }
+    if (page === 'profile') {
+        loadUserSettings();
+        loadDataStats();
     }
 }
 
@@ -97,6 +223,125 @@ function initCompose() {
         previewSection.classList.remove('active');
         composeContainer.classList.remove('with-preview');
     });
+    
+    // Initialize file upload
+    initFileUpload();
+}
+
+// File upload state
+let selectedFiles = [];
+
+function initFileUpload() {
+    const fileInput = document.getElementById('email-attachments');
+    const uploadArea = document.getElementById('file-upload-area');
+    
+    if (!fileInput || !uploadArea) return;
+    
+    // File input change
+    fileInput.addEventListener('change', (e) => {
+        handleFiles(e.target.files);
+    });
+    
+    // Drag and drop
+    uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('drag-over');
+    });
+    
+    uploadArea.addEventListener('dragleave', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+    });
+    
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+        handleFiles(e.dataTransfer.files);
+    });
+}
+
+function handleFiles(files) {
+    const maxSize = 10 * 1024 * 1024; // 10MB
+    const allowedTypes = [
+        'application/pdf',
+        'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'application/vnd.ms-excel',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'application/vnd.ms-powerpoint',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'text/plain',
+        'text/csv',
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'application/zip',
+        'application/x-rar-compressed'
+    ];
+    
+    for (let file of files) {
+        // Check size
+        if (file.size > maxSize) {
+            showToast('warning', 'File quá lớn', `${file.name} vượt quá 10MB`);
+            continue;
+        }
+        
+        // Check if already added
+        if (selectedFiles.some(f => f.name === file.name && f.size === file.size)) {
+            continue;
+        }
+        
+        selectedFiles.push(file);
+    }
+    
+    renderAttachmentList();
+}
+
+function renderAttachmentList() {
+    const list = document.getElementById('attachment-list');
+    if (!list) return;
+    
+    if (selectedFiles.length === 0) {
+        list.innerHTML = '';
+        return;
+    }
+    
+    list.innerHTML = selectedFiles.map((file, index) => `
+        <div class="attachment-item">
+            <div class="attachment-info">
+                <i class="fas ${getFileIcon(file.type)}"></i>
+                <span class="attachment-name">${file.name}</span>
+                <span class="attachment-size">${formatFileSize(file.size)}</span>
+            </div>
+            <button type="button" class="btn-remove-attachment" onclick="removeAttachment(${index})">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+function removeAttachment(index) {
+    selectedFiles.splice(index, 1);
+    renderAttachmentList();
+}
+
+function getFileIcon(mimeType) {
+    if (mimeType.includes('pdf')) return 'fa-file-pdf';
+    if (mimeType.includes('word') || mimeType.includes('document')) return 'fa-file-word';
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return 'fa-file-excel';
+    if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return 'fa-file-powerpoint';
+    if (mimeType.includes('image')) return 'fa-file-image';
+    if (mimeType.includes('zip') || mimeType.includes('rar')) return 'fa-file-archive';
+    if (mimeType.includes('text')) return 'fa-file-alt';
+    return 'fa-file';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
 async function previewEmail() {
@@ -116,9 +361,8 @@ async function previewEmail() {
     previewContent.style.display = 'none';
     
     try {
-        const response = await fetch(`${API_BASE}/api/preview-email`, {
+        const response = await authFetch(`${API_BASE}/api/preview-email`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
         
@@ -127,6 +371,20 @@ async function previewEmail() {
         if (result.success) {
             document.getElementById('preview-subject-text').textContent = result.subject;
             document.getElementById('preview-body-text').textContent = result.body;
+            
+            // Show attachments in preview
+            const attachmentPreview = document.getElementById('preview-attachments');
+            if (attachmentPreview && selectedFiles.length > 0) {
+                attachmentPreview.innerHTML = `
+                    <div class="preview-attachments-list">
+                        <strong><i class="fas fa-paperclip"></i> Đính kèm (${selectedFiles.length}):</strong>
+                        ${selectedFiles.map(f => `<span class="preview-attachment-tag">${f.name}</span>`).join('')}
+                    </div>
+                `;
+            } else if (attachmentPreview) {
+                attachmentPreview.innerHTML = '';
+            }
+            
             previewLoading.style.display = 'none';
             previewContent.style.display = 'block';
         } else {
@@ -151,16 +409,60 @@ async function sendEmail() {
     sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
     
     try {
-        const response = await fetch(`${API_BASE}/api/send-email`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        });
+        let response;
+        
+        // Check if there are attachments
+        if (selectedFiles.length > 0) {
+            // Use FormData for file upload
+            const formData = new FormData();
+            formData.append('sender_name', data.sender_name);
+            formData.append('recipient_name', data.recipient_name);
+            formData.append('recipient_email', data.recipient_email);
+            formData.append('purpose', data.purpose);
+            formData.append('tone', data.tone);
+            formData.append('language', data.language);
+            if (data.additional_context) {
+                formData.append('additional_context', data.additional_context);
+            }
+            if (data.notification_email) {
+                formData.append('notification_email', data.notification_email);
+            }
+            
+            // Check if we have preview content
+            const previewSubject = document.getElementById('preview-subject-text');
+            const previewBody = document.getElementById('preview-body-text');
+            if (previewSubject && previewBody && previewSubject.textContent) {
+                formData.append('custom_subject', previewSubject.textContent);
+                formData.append('custom_body', previewBody.textContent);
+            }
+            
+            // Add files
+            for (let file of selectedFiles) {
+                formData.append('attachments', file);
+            }
+            
+            const token = localStorage.getItem('auth_token');
+            response = await fetch(`${API_BASE}/api/send-email`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
+                body: formData
+            });
+        } else {
+            // No attachments, use JSON
+            response = await authFetch(`${API_BASE}/api/send-email`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+        }
         
         const result = await response.json();
         
         if (result.success) {
-            showToast('success', 'Thành công!', 'Email đã được gửi đi');
+            const attachmentMsg = selectedFiles.length > 0 ? ` với ${selectedFiles.length} file đính kèm` : '';
+            showToast('success', 'Thành công!', `Email đã được gửi đi${attachmentMsg}`);
             clearComposeForm();
             loadEmails();
             
@@ -188,6 +490,7 @@ function getComposeData() {
         recipient_email: document.getElementById('recipient-email').value.trim(),
         purpose: document.getElementById('email-purpose').value.trim(),
         tone: document.querySelector('input[name="tone"]:checked').value,
+        language: document.querySelector('input[name="language"]:checked')?.value || 'vi',
         additional_context: document.getElementById('additional-context').value.trim()
     };
 }
@@ -228,6 +531,16 @@ function clearComposeForm() {
     document.getElementById('email-purpose').value = '';
     document.getElementById('additional-context').value = '';
     document.querySelector('input[name="tone"][value="professional"]').checked = true;
+    
+    // Reset language to Vietnamese
+    const viRadio = document.querySelector('input[name="language"][value="vi"]');
+    if (viRadio) viRadio.checked = true;
+    
+    // Clear attachments
+    selectedFiles = [];
+    renderAttachmentList();
+    const fileInput = document.getElementById('email-attachments');
+    if (fileInput) fileInput.value = '';
 }
 
 // ==================== Inbox Page ====================
@@ -1490,6 +1803,527 @@ async function allowResendEmail(cvId) {
     }
 }
 
+// ==================== Profile & Settings ====================
+
+function initProfile() {
+    // AI Provider toggle
+    const providerRadios = document.querySelectorAll('input[name="ai-provider"]');
+    providerRadios.forEach(radio => {
+        radio.addEventListener('change', (e) => {
+            toggleAiSettings(e.target.value);
+        });
+    });
+    
+    // Save profile button
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+    if (saveProfileBtn) {
+        saveProfileBtn.addEventListener('click', saveProfile);
+    }
+    
+    // Save settings button
+    const saveSettingsBtn = document.getElementById('save-settings-btn');
+    if (saveSettingsBtn) {
+        saveSettingsBtn.addEventListener('click', saveAllSettings);
+    }
+    
+    // Change password button
+    const changePasswordBtn = document.getElementById('change-password-btn');
+    if (changePasswordBtn) {
+        changePasswordBtn.addEventListener('click', changePassword);
+    }
+    
+    // Delete data buttons
+    const deleteAllEmailsBtn = document.getElementById('delete-all-emails-btn');
+    if (deleteAllEmailsBtn) {
+        deleteAllEmailsBtn.addEventListener('click', deleteAllEmails);
+    }
+    
+    const deleteAllCvsBtn = document.getElementById('delete-all-cvs-btn');
+    if (deleteAllCvsBtn) {
+        deleteAllCvsBtn.addEventListener('click', deleteAllCvs);
+    }
+    
+    const deleteAllDataBtn = document.getElementById('delete-all-data-btn');
+    if (deleteAllDataBtn) {
+        deleteAllDataBtn.addEventListener('click', deleteAllData);
+    }
+    
+    // Load data stats when profile page is shown
+    loadDataStats();
+}
+
+function toggleAiSettings(provider) {
+    const azureSettings = document.getElementById('azure-settings');
+    const geminiSettings = document.getElementById('gemini-settings');
+    
+    if (provider === 'azure') {
+        azureSettings.style.display = 'block';
+        geminiSettings.style.display = 'none';
+    } else {
+        azureSettings.style.display = 'none';
+        geminiSettings.style.display = 'block';
+    }
+}
+
+function togglePassword(inputId) {
+    const input = document.getElementById(inputId);
+    const icon = input.nextElementSibling.querySelector('i');
+    
+    if (input.type === 'password') {
+        input.type = 'text';
+        icon.className = 'fas fa-eye-slash';
+    } else {
+        input.type = 'password';
+        icon.className = 'fas fa-eye';
+    }
+}
+
+async function loadUserSettings() {
+    try {
+        const response = await authFetch(`${API_BASE}/api/user/settings`);
+        const data = await response.json();
+        
+        if (data.success && data.settings) {
+            const s = data.settings;
+            
+            // AI Provider
+            const provider = s.ai_provider || 'azure';
+            const providerRadio = document.querySelector(`input[name="ai-provider"][value="${provider}"]`);
+            if (providerRadio) {
+                providerRadio.checked = true;
+                toggleAiSettings(provider);
+            }
+            
+            // Azure settings
+            if (s.azure_openai_endpoint) {
+                document.getElementById('setting-azure-endpoint').value = s.azure_openai_endpoint;
+            }
+            if (s.azure_openai_api_key) {
+                document.getElementById('setting-azure-key').placeholder = s.azure_openai_api_key;
+            }
+            if (s.azure_openai_deployment_name) {
+                document.getElementById('setting-azure-deployment').value = s.azure_openai_deployment_name;
+            }
+            if (s.azure_openai_api_version) {
+                document.getElementById('setting-azure-version').value = s.azure_openai_api_version;
+            }
+            
+            // Gemini settings
+            if (s.gemini_api_key) {
+                document.getElementById('setting-gemini-key').placeholder = s.gemini_api_key;
+            }
+            if (s.gemini_model) {
+                document.getElementById('setting-gemini-model').value = s.gemini_model;
+            }
+            
+            // Email settings
+            if (s.sender_email) {
+                document.getElementById('setting-sender-email').value = s.sender_email;
+            }
+            if (s.email_host) {
+                document.getElementById('setting-email-host').value = s.email_host;
+            }
+            if (s.email_port) {
+                document.getElementById('setting-email-port').value = s.email_port;
+            }
+            if (s.imap_host) {
+                document.getElementById('setting-imap-host').value = s.imap_host;
+            }
+            if (s.imap_port) {
+                document.getElementById('setting-imap-port').value = s.imap_port;
+            }
+        }
+    } catch (error) {
+        console.error('Error loading settings:', error);
+    }
+}
+
+async function saveProfile() {
+    const btn = document.getElementById('save-profile-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang lưu...';
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/auth/profile`, {
+            method: 'PUT',
+            body: JSON.stringify({
+                full_name: document.getElementById('profile-fullname').value,
+                email: document.getElementById('profile-email').value
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công!', 'Đã cập nhật thông tin cá nhân');
+            // Reload user info
+            await checkAuth();
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể cập nhật');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Lưu thông tin';
+    }
+}
+
+async function saveAllSettings() {
+    const btn = document.getElementById('save-settings-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang lưu...';
+    
+    const settings = {
+        ai_provider: document.querySelector('input[name="ai-provider"]:checked').value,
+        
+        // Azure
+        azure_openai_endpoint: document.getElementById('setting-azure-endpoint').value,
+        azure_openai_deployment_name: document.getElementById('setting-azure-deployment').value,
+        azure_openai_api_version: document.getElementById('setting-azure-version').value,
+        
+        // Gemini
+        gemini_model: document.getElementById('setting-gemini-model').value,
+        
+        // Email
+        sender_email: document.getElementById('setting-sender-email').value,
+        email_host: document.getElementById('setting-email-host').value,
+        email_port: parseInt(document.getElementById('setting-email-port').value) || 587,
+        imap_host: document.getElementById('setting-imap-host').value,
+        imap_port: parseInt(document.getElementById('setting-imap-port').value) || 993
+    };
+    
+    // Only include passwords/keys if they were changed (not placeholder)
+    const azureKey = document.getElementById('setting-azure-key').value;
+    if (azureKey && !azureKey.startsWith('***')) {
+        settings.azure_openai_api_key = azureKey;
+    }
+    
+    const geminiKey = document.getElementById('setting-gemini-key').value;
+    if (geminiKey && !geminiKey.startsWith('***')) {
+        settings.gemini_api_key = geminiKey;
+    }
+    
+    const senderPassword = document.getElementById('setting-sender-password').value;
+    if (senderPassword && senderPassword !== '********') {
+        settings.sender_password = senderPassword;
+    }
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/user/settings`, {
+            method: 'POST',
+            body: JSON.stringify(settings)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công!', 'Đã lưu tất cả cài đặt');
+            loadUserSettings(); // Reload to show masked values
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể lưu cài đặt');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Lưu tất cả cài đặt';
+    }
+}
+
+async function changePassword() {
+    const currentPassword = document.getElementById('current-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-new-password').value;
+    
+    if (!currentPassword || !newPassword || !confirmPassword) {
+        showToast('error', 'Lỗi', 'Vui lòng điền đầy đủ thông tin');
+        return;
+    }
+    
+    if (newPassword !== confirmPassword) {
+        showToast('error', 'Lỗi', 'Mật khẩu xác nhận không khớp');
+        return;
+    }
+    
+    const btn = document.getElementById('change-password-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/auth/change-password`, {
+            method: 'POST',
+            body: JSON.stringify({
+                old_password: currentPassword,
+                new_password: newPassword
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công!', 'Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
+            // Clear form
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-new-password').value = '';
+            
+            // Redirect to login after 2 seconds
+            setTimeout(() => {
+                logout();
+            }, 2000);
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể đổi mật khẩu');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-key"></i> Đổi mật khẩu';
+    }
+}
+
+// ==================== Data Management ====================
+
+async function loadDataStats() {
+    try {
+        const response = await authFetch(`${API_BASE}/api/data/stats`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const emailCountEl = document.getElementById('email-count');
+            const cvCountEl = document.getElementById('cv-count');
+            
+            if (emailCountEl) emailCountEl.textContent = data.email_count || 0;
+            if (cvCountEl) cvCountEl.textContent = data.cv_count || 0;
+        }
+    } catch (error) {
+        console.error('Error loading data stats:', error);
+    }
+}
+
+async function deleteAllEmails() {
+    const confirmed = await showConfirmDialog(
+        'Xóa tất cả Email?',
+        'Bạn có chắc chắn muốn xóa TẤT CẢ email đã gửi? Thao tác này không thể hoàn tác!',
+        'danger'
+    );
+    
+    if (!confirmed) return;
+    
+    const btn = document.getElementById('delete-all-emails-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xóa...';
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/emails/delete-all`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công!', `Đã xóa ${data.deleted_count} email`);
+            loadDataStats();
+            loadEmails(); // Refresh email list
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa email');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash-alt"></i> Xóa tất cả Email';
+    }
+}
+
+async function deleteAllCvs() {
+    const confirmed = await showConfirmDialog(
+        'Xóa tất cả CV?',
+        'Bạn có chắc chắn muốn xóa TẤT CẢ CV đã đánh giá? Thao tác này không thể hoàn tác!',
+        'danger'
+    );
+    
+    if (!confirmed) return;
+    
+    const btn = document.getElementById('delete-all-cvs-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xóa...';
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/cv/delete-all`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công!', `Đã xóa ${data.deleted_count} CV`);
+            loadDataStats();
+            loadCvEvaluations(); // Refresh CV list
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa CV');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-trash-alt"></i> Xóa tất cả CV';
+    }
+}
+
+async function deleteAllData() {
+    const confirmed = await showConfirmDialog(
+        'Xóa TOÀN BỘ dữ liệu?',
+        'Bạn có chắc chắn muốn xóa TẤT CẢ email VÀ CV? Thao tác này KHÔNG THỂ hoàn tác!',
+        'danger'
+    );
+    
+    if (!confirmed) return;
+    
+    // Double confirm for this dangerous action
+    const doubleConfirmed = await showConfirmDialog(
+        'XÁC NHẬN LẦN NỮA',
+        'Đây là thao tác nguy hiểm! Tất cả dữ liệu sẽ bị xóa vĩnh viễn. Bạn thực sự muốn tiếp tục?',
+        'danger'
+    );
+    
+    if (!doubleConfirmed) return;
+    
+    const btn = document.getElementById('delete-all-data-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xóa...';
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/data/delete-all`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công!', `Đã xóa ${data.deleted_emails} email và ${data.deleted_cvs} CV`);
+            loadDataStats();
+            loadEmails();
+            loadCvEvaluations();
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa dữ liệu');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Xóa toàn bộ dữ liệu';
+    }
+}
+
+async function deleteEmail(emailId) {
+    const confirmed = await showConfirmDialog(
+        'Xóa email này?',
+        'Bạn có chắc chắn muốn xóa email này? Thao tác không thể hoàn tác.',
+        'warning'
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/emails/${emailId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Đã xóa', 'Email đã được xóa');
+            loadEmails();
+            loadDataStats();
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa email');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    }
+}
+
+async function deleteCv(cvId) {
+    const confirmed = await showConfirmDialog(
+        'Xóa CV này?',
+        'Bạn có chắc chắn muốn xóa CV này? Thao tác không thể hoàn tác.',
+        'warning'
+    );
+    
+    if (!confirmed) return;
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/cv/${cvId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Đã xóa', 'CV đã được xóa');
+            loadCvEvaluations();
+            loadDataStats();
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa CV');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    }
+}
+
+function showConfirmDialog(title, message, type = 'warning') {
+    return new Promise((resolve) => {
+        // Create modal
+        const modal = document.createElement('div');
+        modal.className = 'modal confirm-modal active';
+        modal.innerHTML = `
+            <div class="modal-overlay"></div>
+            <div class="modal-content confirm-dialog ${type}">
+                <div class="modal-header">
+                    <h2><i class="fas fa-${type === 'danger' ? 'exclamation-triangle' : 'question-circle'}"></i> ${title}</h2>
+                </div>
+                <div class="modal-body">
+                    <p>${message}</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" id="confirm-cancel">
+                        <i class="fas fa-times"></i> Hủy
+                    </button>
+                    <button class="btn btn-${type === 'danger' ? 'danger' : 'primary'}" id="confirm-ok">
+                        <i class="fas fa-check"></i> Xác nhận
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modal);
+        
+        // Handle clicks
+        modal.querySelector('#confirm-cancel').addEventListener('click', () => {
+            modal.remove();
+            resolve(false);
+        });
+        
+        modal.querySelector('#confirm-ok').addEventListener('click', () => {
+            modal.remove();
+            resolve(true);
+        });
+        
+        modal.querySelector('.modal-overlay').addEventListener('click', () => {
+            modal.remove();
+            resolve(false);
+        });
+    });
+}
+
 // Make functions globally available
 window.previewCvEmail = previewCvEmail;
 window.allowResendEmail = allowResendEmail;
+window.togglePassword = togglePassword;
+window.logout = logout;
+window.deleteEmail = deleteEmail;
+window.deleteCv = deleteCv;
+window.removeAttachment = removeAttachment;
+
