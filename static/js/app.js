@@ -3627,6 +3627,134 @@ function showConfirmDialog(title, message, type = 'warning') {
     });
 }
 
+// ==================== Auto Reply Settings ====================
+
+function initAutoReplySettings() {
+    const enabledCheckbox = document.getElementById('auto-reply-enabled');
+    const optionsDiv = document.getElementById('auto-reply-options');
+    const businessHoursCheckbox = document.getElementById('auto-reply-business-hours');
+    const businessHoursConfig = document.getElementById('business-hours-config');
+    
+    if (enabledCheckbox && optionsDiv) {
+        enabledCheckbox.addEventListener('change', () => {
+            optionsDiv.style.display = enabledCheckbox.checked ? 'block' : 'none';
+        });
+    }
+    
+    if (businessHoursCheckbox && businessHoursConfig) {
+        businessHoursCheckbox.addEventListener('change', () => {
+            businessHoursConfig.style.display = businessHoursCheckbox.checked ? 'flex' : 'none';
+        });
+    }
+    
+    // Load settings when on profile page
+    loadAutoReplySettings();
+}
+
+async function loadAutoReplySettings() {
+    try {
+        const response = await authFetch(`${API_BASE}/api/auto-reply/settings`);
+        const data = await response.json();
+        
+        if (data.success && data.settings) {
+            const s = data.settings;
+            
+            const enabledCheckbox = document.getElementById('auto-reply-enabled');
+            const optionsDiv = document.getElementById('auto-reply-options');
+            
+            if (enabledCheckbox) {
+                enabledCheckbox.checked = s.enabled || false;
+                if (optionsDiv) {
+                    optionsDiv.style.display = s.enabled ? 'block' : 'none';
+                }
+            }
+            
+            const requireConfirmation = document.getElementById('auto-reply-require-confirmation');
+            if (requireConfirmation) requireConfirmation.checked = s.require_confirmation !== false;
+            
+            const threshold = document.getElementById('auto-reply-threshold');
+            if (threshold) threshold.value = s.auto_send_threshold || 0.9;
+            
+            const timeout = document.getElementById('auto-reply-timeout');
+            if (timeout) timeout.value = s.confirmation_timeout_hours || 24;
+            
+            const languages = document.getElementById('auto-reply-languages');
+            if (languages) languages.value = s.reply_languages || 'vi,en';
+            
+            const exclude = document.getElementById('auto-reply-exclude');
+            if (exclude) exclude.value = s.exclude_keywords || '';
+            
+            const businessHours = document.getElementById('auto-reply-business-hours');
+            const businessHoursConfig = document.getElementById('business-hours-config');
+            if (businessHours) {
+                businessHours.checked = s.only_business_hours || false;
+                if (businessHoursConfig) {
+                    businessHoursConfig.style.display = s.only_business_hours ? 'flex' : 'none';
+                }
+            }
+            
+            const hoursStart = document.getElementById('auto-reply-hours-start');
+            if (hoursStart) hoursStart.value = s.business_hours_start || 9;
+            
+            const hoursEnd = document.getElementById('auto-reply-hours-end');
+            if (hoursEnd) hoursEnd.value = s.business_hours_end || 18;
+        }
+    } catch (error) {
+        console.log('Could not load auto-reply settings:', error);
+    }
+}
+
+function getAutoReplySettings() {
+    return {
+        enabled: document.getElementById('auto-reply-enabled')?.checked || false,
+        require_confirmation: document.getElementById('auto-reply-require-confirmation')?.checked !== false,
+        auto_send_threshold: parseFloat(document.getElementById('auto-reply-threshold')?.value) || 0.9,
+        confirmation_timeout_hours: parseInt(document.getElementById('auto-reply-timeout')?.value) || 24,
+        reply_languages: document.getElementById('auto-reply-languages')?.value || 'vi,en',
+        exclude_keywords: document.getElementById('auto-reply-exclude')?.value || '',
+        only_business_hours: document.getElementById('auto-reply-business-hours')?.checked || false,
+        business_hours_start: parseInt(document.getElementById('auto-reply-hours-start')?.value) || 9,
+        business_hours_end: parseInt(document.getElementById('auto-reply-hours-end')?.value) || 18
+    };
+}
+
+async function saveAutoReplySettings() {
+    try {
+        const settings = getAutoReplySettings();
+        
+        const response = await authFetch(`${API_BASE}/api/auto-reply/settings`, {
+            method: 'POST',
+            body: JSON.stringify(settings)
+        });
+        
+        const data = await response.json();
+        return data.success;
+    } catch (error) {
+        console.error('Error saving auto-reply settings:', error);
+        return false;
+    }
+}
+
+// Integrate with existing save settings
+const originalSaveSettings = window.saveSettings;
+window.saveSettings = async function() {
+    // Save auto-reply settings first
+    const autoReplySuccess = await saveAutoReplySettings();
+    if (!autoReplySuccess) {
+        console.warn('Failed to save auto-reply settings');
+    }
+    
+    // Call original save settings if exists
+    if (typeof originalSaveSettings === 'function') {
+        return originalSaveSettings();
+    }
+};
+
+// Initialize on DOMContentLoaded
+document.addEventListener('DOMContentLoaded', () => {
+    initAutoReplySettings();
+});
+
 // Make functions globally available
 window.previewCvEmail = previewCvEmail;
 window.allowResendEmail = allowResendEmail;
@@ -3635,4 +3763,6 @@ window.logout = logout;
 window.deleteEmail = deleteEmail;
 window.deleteCv = deleteCv;
 window.removeAttachment = removeAttachment;
+window.loadAutoReplySettings = loadAutoReplySettings;
+window.saveAutoReplySettings = saveAutoReplySettings;
 

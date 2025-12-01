@@ -1,5 +1,6 @@
 """
 Email Monitor Service - Monitors for responses and triggers analysis
+With Auto-Reply support for automated response handling
 """
 import time
 import threading
@@ -232,6 +233,12 @@ class EmailMonitor:
             analysis=analysis
         )
         
+        # Store response_id in response dict for auto-reply
+        response['response_id'] = response_id
+        
+        # Try to create auto-reply draft if enabled
+        self._try_create_auto_reply(email_record, response, analysis)
+        
         # Generate notification email
         notification = self.ai_agent.generate_notification_email(
             sender_name=email_record['sender_name'],
@@ -258,6 +265,55 @@ class EmailMonitor:
             logger.error("Failed to send notification email")
         
         return analysis
+    
+    def _try_create_auto_reply(self, email_record: dict, response: dict, analysis: dict):
+        """Try to create auto-reply draft if enabled for user"""
+        try:
+            user_id = email_record.get('user_id')
+            if not user_id:
+                logger.debug("No user_id in email_record, skipping auto-reply")
+                return
+            
+            # Lazy import to avoid circular imports
+            from services.auto_reply_service import AutoReplyService
+            
+            auto_reply_service = AutoReplyService(
+                self.database, 
+                self.ai_agent, 
+                self.email_service
+            )
+            
+            # Check if auto-reply is enabled for this user
+            settings = auto_reply_service.get_user_settings(user_id)
+            if not settings or not settings.get('enabled', False):
+                logger.debug(f"Auto-reply disabled for user {user_id}")
+                return
+            
+            # Prepare incoming email data
+            incoming_email = {
+                'response_id': response.get('response_id'),
+                'from_email': email_record['recipient_email'],
+                'from_name': email_record['recipient_name'],
+                'subject': response.get('subject', ''),
+                'body': response.get('body', '')
+            }
+            
+            # Create auto-reply draft
+            draft = auto_reply_service.analyze_and_create_draft(
+                user_id=user_id,
+                original_email=email_record,
+                incoming_email=incoming_email,
+                conversation_history=None  # Could fetch from DB if needed
+            )
+            
+            if draft:
+                logger.info(f"Auto-reply draft created for user {user_id}, draft_id: {draft.get('id')}")
+            else:
+                logger.debug(f"No auto-reply draft created (AI decided not to reply)")
+                
+        except Exception as e:
+            logger.error(f"Error creating auto-reply draft: {e}")
+            # Don't raise - auto-reply is optional feature
 
 
 class ManualResponseProcessor:

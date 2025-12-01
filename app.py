@@ -3,7 +3,7 @@ Email AI Agent - Flask Web Application
 Modern UI for email automation with Azure OpenAI or Google Gemini
 With Realtime WebSocket support, Authentication, and Auto-start Monitor
 """
-from flask import Flask, render_template, request, jsonify, Response, make_response
+from flask import Flask, render_template, request, jsonify, Response, make_response, render_template_string
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import json
@@ -1874,6 +1874,355 @@ def get_system_info():
         "sender_email": SENDER_EMAIL,
         "realtime_enabled": True
     })
+
+
+# ==================== Auto Reply API ====================
+
+# Initialize auto-reply service
+from services.auto_reply_service import AutoReplyService
+auto_reply_service = None
+
+def get_auto_reply_service():
+    """Lazy initialization of auto-reply service"""
+    global auto_reply_service
+    if auto_reply_service is None:
+        auto_reply_service = AutoReplyService(database, ai_agent, email_service)
+    return auto_reply_service
+
+
+@app.route('/api/auto-reply/settings', methods=['GET'])
+@login_required
+def get_auto_reply_settings():
+    """Get auto-reply settings for current user"""
+    try:
+        user_id = request.current_user['id']
+        service = get_auto_reply_service()
+        settings = service.get_user_settings(user_id)
+        
+        return jsonify({
+            "success": True,
+            "settings": settings or {
+                "enabled": False,
+                "auto_send_threshold": 0.9,
+                "require_confirmation": True,
+                "confirmation_timeout_hours": 24,
+                "reply_languages": "vi,en",
+                "exclude_keywords": "",
+                "only_business_hours": False,
+                "business_hours_start": 9,
+                "business_hours_end": 18
+            }
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auto-reply/settings', methods=['POST'])
+@login_required
+def save_auto_reply_settings():
+    """Save auto-reply settings for current user"""
+    try:
+        user_id = request.current_user['id']
+        data = request.json
+        
+        service = get_auto_reply_service()
+        success = service.save_user_settings(user_id, data)
+        
+        if success:
+            return jsonify({
+                "success": True,
+                "message": "Đã lưu cài đặt trả lời tự động"
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "error": "Không thể lưu cài đặt"
+            }), 500
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auto-reply/drafts', methods=['GET'])
+@login_required
+def get_auto_reply_drafts():
+    """Get all auto-reply drafts for current user"""
+    try:
+        user_id = request.current_user['id']
+        status = request.args.get('status')  # pending, sent, rejected, expired
+        
+        service = get_auto_reply_service()
+        drafts = service.get_all_drafts(user_id, status)
+        
+        return jsonify({
+            "success": True,
+            "drafts": drafts
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auto-reply/drafts/<int:draft_id>', methods=['GET'])
+@login_required
+def get_auto_reply_draft(draft_id):
+    """Get a specific draft"""
+    try:
+        service = get_auto_reply_service()
+        draft = service.get_draft_by_id(draft_id)
+        
+        if not draft:
+            return jsonify({"success": False, "error": "Không tìm thấy draft"}), 404
+        
+        # Check ownership
+        if draft['user_id'] != request.current_user['id']:
+            return jsonify({"success": False, "error": "Không có quyền truy cập"}), 403
+        
+        return jsonify({
+            "success": True,
+            "draft": draft
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auto-reply/confirm/<token>', methods=['GET'])
+def confirm_auto_reply(token):
+    """Confirm and send auto-reply (via email link)"""
+    try:
+        service = get_auto_reply_service()
+        result = service.confirm_and_send(token)
+        
+        # Return HTML page for better UX
+        if result['success']:
+            return render_template_string(CONFIRMATION_SUCCESS_HTML, message=result['message'])
+        else:
+            return render_template_string(CONFIRMATION_ERROR_HTML, error=result['error'])
+    except Exception as e:
+        return render_template_string(CONFIRMATION_ERROR_HTML, error=str(e))
+
+
+@app.route('/api/auto-reply/reject/<token>', methods=['GET'])
+def reject_auto_reply(token):
+    """Reject auto-reply (via email link)"""
+    try:
+        service = get_auto_reply_service()
+        result = service.reject_draft(token)
+        
+        if result['success']:
+            return render_template_string(REJECTION_SUCCESS_HTML, message=result['message'])
+        else:
+            return render_template_string(CONFIRMATION_ERROR_HTML, error=result['error'])
+    except Exception as e:
+        return render_template_string(CONFIRMATION_ERROR_HTML, error=str(e))
+
+
+@app.route('/api/auto-reply/confirm/<token>', methods=['POST'])
+@login_required
+def confirm_auto_reply_api(token):
+    """Confirm auto-reply via API (from UI)"""
+    try:
+        service = get_auto_reply_service()
+        result = service.confirm_and_send(token)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auto-reply/reject/<token>', methods=['POST'])
+@login_required
+def reject_auto_reply_api(token):
+    """Reject auto-reply via API (from UI)"""
+    try:
+        service = get_auto_reply_service()
+        result = service.reject_draft(token)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+# HTML Templates for confirmation pages
+CONFIRMATION_SUCCESS_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email đã gửi thành công</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 50px 40px;
+            text-align: center;
+            max-width: 450px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+        }
+        .icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
+            font-size: 40px;
+        }
+        h1 { color: #047857; margin-bottom: 15px; font-size: 24px; }
+        p { color: #6b7280; line-height: 1.6; margin-bottom: 25px; }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">✅</div>
+        <h1>Thành công!</h1>
+        <p>{{ message }}</p>
+        <a href="/" class="btn">Về trang chủ</a>
+    </div>
+</body>
+</html>
+"""
+
+CONFIRMATION_ERROR_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Có lỗi xảy ra</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 50px 40px;
+            text-align: center;
+            max-width: 450px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+        }
+        .icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
+            font-size: 40px;
+        }
+        h1 { color: #dc2626; margin-bottom: 15px; font-size: 24px; }
+        p { color: #6b7280; line-height: 1.6; margin-bottom: 25px; }
+        .error { background: #fef2f2; color: #991b1b; padding: 15px; border-radius: 10px; margin-bottom: 25px; }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">❌</div>
+        <h1>Có lỗi xảy ra</h1>
+        <div class="error">{{ error }}</div>
+        <a href="/" class="btn">Về trang chủ</a>
+    </div>
+</body>
+</html>
+"""
+
+REJECTION_SUCCESS_HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đã từ chối email</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 50px 40px;
+            text-align: center;
+            max-width: 450px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.15);
+        }
+        .icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 25px;
+            font-size: 40px;
+        }
+        h1 { color: #374151; margin-bottom: 15px; font-size: 24px; }
+        p { color: #6b7280; line-height: 1.6; margin-bottom: 25px; }
+        .btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 10px;
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon">🚫</div>
+        <h1>Đã từ chối</h1>
+        <p>{{ message }}</p>
+        <a href="/" class="btn">Về trang chủ</a>
+    </div>
+</body>
+</html>
+"""
 
 
 if __name__ == '__main__':

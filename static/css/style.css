@@ -4438,3 +4438,99 @@ select:focus-visible {
     }
 }
 
+/* ==================== Toggle Switch ==================== */
+.toggle-switch-label {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    user-select: none;
+}
+
+.toggle-switch {
+    display: none;
+}
+
+.toggle-slider {
+    position: relative;
+    width: 50px;
+    height: 26px;
+    background: #e2e8f0;
+    border-radius: 26px;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+.toggle-switch:checked + .toggle-slider {
+    background: linear-gradient(135deg, var(--primary-color) 0%, #8b5cf6 100%);
+}
+
+.toggle-switch:checked + .toggle-slider::before {
+    transform: translateX(24px);
+}
+
+.toggle-text {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Auto Reply Options */
+.auto-reply-options {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border-color);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.auto-reply-options .form-group {
+    margin-bottom: 20px;
+}
+
+.auto-reply-options .form-group small {
+    display: block;
+    margin-top: 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.business-hours-config {
+    display: flex;
+    gap: 20px;
+    margin-top: 10px;
+    padding: 15px;
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+}
+
+.business-hours-config .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+/* Alert with icon */
+.alert-content {
+    flex: 1;
+}
+
+.alert-content strong {
+    display: block;
+    margin-bottom: 4px;
+}
