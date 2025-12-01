@@ -395,6 +395,21 @@ function initCompose() {
         composeContainer.classList.remove('with-preview');
     });
     
+    // Nút gửi từ preview
+    const sendFromPreviewBtn = document.getElementById('send-from-preview-btn');
+    if (sendFromPreviewBtn) {
+        sendFromPreviewBtn.addEventListener('click', sendEmailFromPreview);
+    }
+    
+    // Nút tạo lại email trong preview
+    const regenerateBtn = document.getElementById('regenerate-preview-btn');
+    if (regenerateBtn) {
+        regenerateBtn.addEventListener('click', () => {
+            // Tạo lại email mới
+            previewEmail();
+        });
+    }
+    
     // Initialize file upload
     initFileUpload();
 }
@@ -540,8 +555,9 @@ async function previewEmail() {
         const result = await response.json();
         
         if (result.success) {
-            document.getElementById('preview-subject-text').textContent = result.subject;
-            document.getElementById('preview-body-text').textContent = result.body;
+            // Sử dụng input/textarea để cho phép chỉnh sửa
+            document.getElementById('preview-subject-input').value = result.subject;
+            document.getElementById('preview-body-input').value = result.body;
             
             // Show attachments in preview
             const attachmentPreview = document.getElementById('preview-attachments');
@@ -567,6 +583,120 @@ async function previewEmail() {
         showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
         previewSection.classList.remove('active');
         composeContainer.classList.remove('with-preview');
+    }
+}
+
+// Gửi email từ preview với nội dung đã chỉnh sửa
+async function sendEmailFromPreview() {
+    const data = getComposeData();
+    
+    // Lấy nội dung đã chỉnh sửa từ preview
+    const customSubject = document.getElementById('preview-subject-input').value.trim();
+    const customBody = document.getElementById('preview-body-input').value.trim();
+    
+    if (!customSubject) {
+        showToast('error', 'Thiếu thông tin', 'Vui lòng nhập tiêu đề email');
+        return;
+    }
+    
+    if (!customBody) {
+        showToast('error', 'Thiếu thông tin', 'Vui lòng nhập nội dung email');
+        return;
+    }
+    
+    const sendBtn = document.getElementById('send-from-preview-btn');
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+    
+    try {
+        let response;
+        
+        if (selectedFiles.length > 0) {
+            // Use FormData for file upload
+            const formData = new FormData();
+            formData.append('sender_name', data.sender_name);
+            formData.append('recipient_name', data.recipient_name);
+            formData.append('recipient_email', data.recipient_email);
+            formData.append('purpose', data.purpose);
+            formData.append('tone', data.tone);
+            formData.append('language', data.language);
+            if (data.additional_context) {
+                formData.append('additional_context', data.additional_context);
+            }
+            if (data.notification_email) {
+                formData.append('notification_email', data.notification_email);
+            }
+            
+            // Thêm nội dung đã chỉnh sửa
+            formData.append('custom_subject', customSubject);
+            formData.append('custom_body', customBody);
+            
+            // Add files
+            for (let file of selectedFiles) {
+                formData.append('attachments', file);
+            }
+            
+            const token = localStorage.getItem('auth_token');
+            response = await fetch(`${API_BASE}/api/send-email`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                },
+                credentials: 'include',
+                body: formData
+            });
+        } else {
+            // No attachments, use JSON với nội dung đã chỉnh sửa
+            response = await authFetch(`${API_BASE}/api/send-email`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...data,
+                    custom_subject: customSubject,
+                    custom_body: customBody
+                })
+            });
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            const attachmentMsg = selectedFiles.length > 0 ? ` với ${selectedFiles.length} file đính kèm` : '';
+            showToast('success', 'Thành công!', `Email đã được gửi đi${attachmentMsg}`);
+            clearComposeForm();
+            
+            // Invalidate cache and reload emails
+            cache.invalidate('emails');
+            cache.invalidate('dataStats');
+            loadEmails(true);
+            
+            // Close preview
+            const previewSection = document.getElementById('preview-section');
+            const composeContainer = document.querySelector('.compose-container');
+            previewSection.classList.remove('active');
+            composeContainer.classList.remove('with-preview');
+            
+            if (result.monitor_started) {
+                updateMonitorUI(true);
+                showToast('info', 'Giám sát tự động', 'Hệ thống giám sát phản hồi đã được kích hoạt');
+                addActivityLog('success', 'Auto-Monitor', 'Hệ thống giám sát đã tự động bật sau khi gửi email');
+            }
+        } else {
+            if (result.error_code === 'EMAIL_NOT_CONFIGURED') {
+                showToast('warning', 'Chưa cấu hình Email', result.error);
+                if (confirm('Bạn cần cấu hình Email gửi trước khi gửi email. Chuyển đến trang Hồ sơ để cấu hình?')) {
+                    document.getElementById('preview-section').classList.remove('active');
+                    document.querySelector('.compose-container').classList.remove('with-preview');
+                    navigateTo('profile');
+                }
+            } else {
+                showToast('error', 'Lỗi', result.error || 'Không thể gửi email');
+            }
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
+    } finally {
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Gửi Email';
     }
 }
 

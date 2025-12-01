@@ -257,7 +257,7 @@
                     <div class="preview-section" id="preview-section">
                         <div class="card preview-card">
                             <div class="card-header">
-                                <h2><i class="fas fa-file-alt"></i> Xem trước Email</h2>
+                                <h2><i class="fas fa-file-alt"></i> Xem trước & Chỉnh sửa Email</h2>
                                 <button class="btn btn-icon btn-sm" id="close-preview">
                                     <i class="fas fa-times"></i>
                                 </button>
@@ -268,13 +268,25 @@
                                     <p>AI đang soạn email...</p>
                                 </div>
                                 <div class="preview-content" id="preview-content" style="display: none;">
+                                    <div class="preview-edit-notice">
+                                        <i class="fas fa-info-circle"></i>
+                                        <span>Bạn có thể chỉnh sửa tiêu đề và nội dung email trước khi gửi</span>
+                                    </div>
                                     <div class="preview-subject">
-                                        <label>Tiêu đề:</label>
-                                        <p id="preview-subject-text"></p>
+                                        <label for="preview-subject-input">Tiêu đề:</label>
+                                        <input type="text" id="preview-subject-input" class="preview-editable-input" placeholder="Tiêu đề email">
                                     </div>
                                     <div class="preview-body">
-                                        <label>Nội dung:</label>
-                                        <div id="preview-body-text"></div>
+                                        <label for="preview-body-input">Nội dung:</label>
+                                        <textarea id="preview-body-input" class="preview-editable-textarea" rows="12" placeholder="Nội dung email"></textarea>
+                                    </div>
+                                    <div class="preview-actions">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="regenerate-preview-btn">
+                                            <i class="fas fa-redo"></i> Tạo lại
+                                        </button>
+                                        <button type="button" class="btn btn-primary" id="send-from-preview-btn">
+                                            <i class="fas fa-paper-plane"></i> Gửi Email
+                                        </button>
                                     </div>
                                     <div id="preview-attachments"></div>
                                 </div>
