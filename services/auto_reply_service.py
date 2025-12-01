@@ -351,17 +351,13 @@ Trả về JSON với format:
             user_settings = self.database.get_user_settings(draft['user_id'])
             
             if user_settings and user_settings.get('sender_email'):
-                sender_email = user_settings['sender_email']
-                sender_password = user_settings.get('sender_password', '')
-                
-                # Create email service with user's credentials
+                # Create email service and set user's credentials
                 from services.email_service import EmailService
-                user_email_service = EmailService(
-                    sender_email=sender_email,
-                    sender_password=sender_password,
-                    email_host=user_settings.get('email_host', 'smtp.gmail.com'),
-                    email_port=user_settings.get('email_port', 587)
-                )
+                user_email_service = EmailService()
+                user_email_service.sender_email = user_settings['sender_email']
+                user_email_service.sender_password = user_settings.get('sender_password', '')
+                user_email_service.smtp_host = user_settings.get('email_host', 'smtp.gmail.com')
+                user_email_service.smtp_port = int(user_settings.get('email_port', 587))
             else:
                 user_email_service = self.email_service
             

@@ -144,6 +144,7 @@ class EmailMonitor:
         """Process responses for a specific sent email and return details"""
         recipient_email = email_record['recipient_email']
         sent_date = parse_datetime(email_record['sent_at'])
+        original_subject = email_record['subject'] or ''
         
         result = {
             "email_id": email_record['id'],
@@ -155,9 +156,10 @@ class EmailMonitor:
         
         try:
             # Get responses using instance's email service (with user's IMAP settings)
+            # Use better subject matching - look for "Re:" prefix or key words
             responses = self.email_service.get_responses_with_config(
                 from_email=recipient_email,
-                subject_contains=email_record['subject'].split()[:3][0] if email_record['subject'] else None,
+                subject_contains=None,  # Get all emails, filter manually for better accuracy
                 since_date=sent_date - timedelta(hours=1)
             )
             
@@ -165,11 +167,17 @@ class EmailMonitor:
                 logger.info(f"No responses found from {recipient_email}")
                 return result
             
-            result["found"] = len(responses)
-            logger.info(f"Found {len(responses)} potential responses from {recipient_email}")
-            
-            # Process each response
+            # Filter responses that actually match this email
+            matched_responses = []
             for response in responses:
+                if self._is_response_to_email(original_subject, response.get('subject', '')):
+                    matched_responses.append(response)
+            
+            result["found"] = len(matched_responses)
+            logger.info(f"Found {len(matched_responses)} matched responses from {recipient_email} (out of {len(responses)} total)")
+            
+            # Process each matched response
+            for response in matched_responses:
                 try:
                     analysis = self._analyze_and_notify(email_record, response)
                     result["processed"] += 1
@@ -190,26 +198,85 @@ class EmailMonitor:
             result["error"] = str(e)
         
         return result
+    
+    def _is_response_to_email(self, original_subject: str, response_subject: str) -> bool:
+        """
+        Check if a response email is actually a reply to the original email.
+        Uses multiple matching strategies for accuracy.
+        """
+        if not original_subject or not response_subject:
+            return False
+        
+        original_clean = original_subject.lower().strip()
+        response_clean = response_subject.lower().strip()
+        
+        # Strategy 1: Check for "Re:" prefix with original subject
+        # Remove common prefixes like "Re:", "Fwd:", "RE:", "FW:" etc.
+        prefixes = ['re:', 'fwd:', 'fw:', 'tr:', 'aw:', 'sv:', 'antw:']
+        
+        def clean_subject(subj):
+            """Remove reply/forward prefixes"""
+            subj = subj.lower().strip()
+            while True:
+                changed = False
+                for prefix in prefixes:
+                    if subj.startswith(prefix):
+                        subj = subj[len(prefix):].strip()
+                        changed = True
+                if not changed:
+                    break
+            return subj
+        
+        original_core = clean_subject(original_clean)
+        response_core = clean_subject(response_clean)
+        
+        # Exact match after cleaning prefixes
+        if original_core == response_core:
+            return True
+        
+        # Strategy 2: Original subject is contained in response (with Re: prefix)
+        if response_clean.startswith('re:') and original_core in response_core:
+            return True
+        
+        # Strategy 3: Check if enough key words match (at least 60% of words)
+        original_words = set(w for w in original_core.split() if len(w) > 2)
+        response_words = set(w for w in response_core.split() if len(w) > 2)
+        
+        if original_words and response_words:
+            common_words = original_words & response_words
+            match_ratio = len(common_words) / len(original_words)
+            if match_ratio >= 0.6:
+                return True
+        
+        return False
 
     def _process_email_responses(self, email_record: dict):
         """Process responses for a specific sent email"""
         recipient_email = email_record['recipient_email']
         sent_date = parse_datetime(email_record['sent_at'])
+        original_subject = email_record['subject'] or ''
         
         # Get responses from the recipient
         responses = self.email_service.get_responses(
             from_email=recipient_email,
-            subject_contains=email_record['subject'].split()[:3][0] if email_record['subject'] else None,
+            subject_contains=None,  # Get all emails, filter manually for better accuracy
             since_date=sent_date - timedelta(hours=1)
         )
         
         if not responses:
             return
-            
-        logger.info(f"Found {len(responses)} potential responses from {recipient_email}")
         
-        # Process each response
-        for response in responses:
+        # Filter responses that actually match this email
+        matched_responses = [r for r in responses if self._is_response_to_email(original_subject, r.get('subject', ''))]
+        
+        if not matched_responses:
+            logger.info(f"No matched responses found from {recipient_email} (had {len(responses)} total)")
+            return
+            
+        logger.info(f"Found {len(matched_responses)} matched responses from {recipient_email}")
+        
+        # Process each matched response
+        for response in matched_responses:
             self._analyze_and_notify(email_record, response)
     
     def _analyze_and_notify(self, email_record: dict, response: dict):
