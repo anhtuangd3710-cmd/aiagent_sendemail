@@ -425,7 +425,15 @@ Trả về JSON với format:
             return
         
         # Build confirmation URL
-        base_url = os.environ.get('APP_BASE_URL', 'https://your-app.vercel.app')
+        # Priority: APP_BASE_URL > VERCEL_URL > default
+        base_url = os.environ.get('APP_BASE_URL')
+        if not base_url:
+            vercel_url = os.environ.get('VERCEL_URL')
+            if vercel_url:
+                base_url = f"https://{vercel_url}"
+            else:
+                base_url = 'https://aiagent-sendemail.vercel.app'  # Fallback
+        
         confirm_url = f"{base_url}/api/auto-reply/confirm/{draft['confirmation_token']}"
         reject_url = f"{base_url}/api/auto-reply/reject/{draft['confirmation_token']}"
         
