@@ -1205,6 +1205,64 @@
         </div>
     </div>
 
+    <!-- Draft Detail Modal -->
+    <div class="modal" id="draft-detail-modal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-lg">
+            <div class="modal-header">
+                <h2><i class="fas fa-envelope-open-text"></i> Chi tiết Email Phản hồi</h2>
+                <button class="btn btn-icon close-draft-detail">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body" id="draft-detail-body">
+                <div class="draft-detail-loading">
+                    <div class="spinner"></div>
+                    <p>Đang tải...</p>
+                </div>
+                <div class="draft-detail-content" style="display: none;">
+                    <div class="draft-detail-row">
+                        <label><i class="fas fa-user"></i> Từ:</label>
+                        <span id="draft-detail-from"></span>
+                    </div>
+                    <div class="draft-detail-row">
+                        <label><i class="fas fa-envelope"></i> Email:</label>
+                        <span id="draft-detail-email"></span>
+                    </div>
+                    <div class="draft-detail-row">
+                        <label><i class="fas fa-info-circle"></i> Trạng thái:</label>
+                        <span id="draft-detail-status" class="draft-status"></span>
+                    </div>
+                    <div class="draft-detail-row">
+                        <label><i class="fas fa-clock"></i> Tạo lúc:</label>
+                        <span id="draft-detail-created"></span>
+                    </div>
+                    <div class="draft-detail-section">
+                        <label><i class="fas fa-reply"></i> Tiêu đề phản hồi:</label>
+                        <div id="draft-detail-subject" class="draft-detail-subject-box"></div>
+                    </div>
+                    <div class="draft-detail-section">
+                        <label><i class="fas fa-file-alt"></i> Nội dung email:</label>
+                        <div id="draft-detail-body-content" class="draft-detail-body-box"></div>
+                    </div>
+                    <div class="draft-detail-section draft-ai-section">
+                        <label><i class="fas fa-robot"></i> AI Reasoning:</label>
+                        <div id="draft-detail-reasoning" class="draft-detail-reasoning-box"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary close-draft-detail">Đóng</button>
+                <button class="btn btn-danger" id="delete-draft-from-modal" style="display: none;">
+                    <i class="fas fa-trash"></i> Xóa
+                </button>
+                <button class="btn btn-primary" id="send-draft-from-modal" style="display: none;">
+                    <i class="fas fa-paper-plane"></i> Gửi ngay
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- CV Email Preview Modal -->
     <div class="modal" id="cv-email-preview-modal">
         <div class="modal-overlay"></div>

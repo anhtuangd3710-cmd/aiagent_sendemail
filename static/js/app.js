@@ -3804,6 +3804,9 @@ function renderDraftsList(drafts) {
     const listContainer = document.getElementById('auto-reply-drafts-list');
     if (!listContainer) return;
     
+    // Store drafts for later lookup
+    loadedDrafts = drafts || [];
+    
     if (!drafts || drafts.length === 0) {
         listContainer.innerHTML = `
             <div class="empty-drafts">
@@ -3943,9 +3946,137 @@ async function rejectAutoReplyDraft(token) {
     }
 }
 
+// Store drafts data for lookup
+let loadedDrafts = [];
+
 function viewDraftDetails(draftId) {
-    // TODO: Show modal with full draft details
-    showToast('info', 'Chi tiết', `Xem chi tiết draft #${draftId}`);
+    const modal = document.getElementById('draft-detail-modal');
+    if (!modal) return;
+    
+    // Show modal
+    modal.classList.add('active');
+    
+    // Show loading, hide content
+    const loading = modal.querySelector('.draft-detail-loading');
+    const content = modal.querySelector('.draft-detail-content');
+    if (loading) loading.style.display = 'flex';
+    if (content) content.style.display = 'none';
+    
+    // Find draft from loaded data
+    const draft = loadedDrafts.find(d => d.id === draftId);
+    
+    if (!draft) {
+        // Fetch from API if not in cache
+        fetchDraftDetails(draftId);
+        return;
+    }
+    
+    displayDraftInModal(draft);
+}
+
+async function fetchDraftDetails(draftId) {
+    try {
+        const response = await authFetch(`${API_BASE}/api/auto-reply/drafts?include_id=${draftId}`);
+        const data = await response.json();
+        
+        if (data.success && data.drafts && data.drafts.length > 0) {
+            const draft = data.drafts.find(d => d.id === draftId) || data.drafts[0];
+            displayDraftInModal(draft);
+        } else {
+            showToast('error', 'Lỗi', 'Không tìm thấy draft');
+            closeDraftDetailModal();
+        }
+    } catch (error) {
+        console.error('Error fetching draft:', error);
+        showToast('error', 'Lỗi', 'Không thể tải chi tiết draft');
+        closeDraftDetailModal();
+    }
+}
+
+function displayDraftInModal(draft) {
+    const modal = document.getElementById('draft-detail-modal');
+    if (!modal) return;
+    
+    // Hide loading, show content
+    const loading = modal.querySelector('.draft-detail-loading');
+    const content = modal.querySelector('.draft-detail-content');
+    if (loading) loading.style.display = 'none';
+    if (content) content.style.display = 'block';
+    
+    // Status labels
+    const statusLabels = {
+        'pending': 'Chờ xác nhận',
+        'sent': 'Đã gửi',
+        'rejected': 'Đã từ chối',
+        'expired': 'Hết hạn'
+    };
+    
+    // Fill in details
+    document.getElementById('draft-detail-from').textContent = draft.from_name || 'Không rõ';
+    document.getElementById('draft-detail-email').textContent = draft.from_email || '';
+    
+    const statusEl = document.getElementById('draft-detail-status');
+    statusEl.textContent = statusLabels[draft.status] || draft.status;
+    statusEl.className = `draft-status ${draft.status}`;
+    
+    document.getElementById('draft-detail-created').textContent = 
+        draft.created_at ? new Date(draft.created_at).toLocaleString('vi-VN') : '';
+    
+    document.getElementById('draft-detail-subject').textContent = 
+        draft.draft_subject || 'Không có tiêu đề';
+    
+    // Display body with line breaks preserved
+    const bodyEl = document.getElementById('draft-detail-body-content');
+    bodyEl.innerHTML = (draft.draft_body || 'Không có nội dung').replace(/\n/g, '<br>');
+    
+    document.getElementById('draft-detail-reasoning').textContent = 
+        draft.ai_reasoning || 'Không có thông tin';
+    
+    // Show/hide action buttons based on status
+    const deleteBtn = document.getElementById('delete-draft-from-modal');
+    const sendBtn = document.getElementById('send-draft-from-modal');
+    
+    if (deleteBtn) {
+        deleteBtn.style.display = 'inline-flex';
+        deleteBtn.onclick = () => {
+            closeDraftDetailModal();
+            deleteAutoReplyDraft(draft.id);
+        };
+    }
+    
+    if (sendBtn) {
+        if (draft.status === 'pending' && draft.confirmation_token) {
+            sendBtn.style.display = 'inline-flex';
+            sendBtn.onclick = () => {
+                closeDraftDetailModal();
+                confirmAutoReplyDraft(draft.confirmation_token);
+            };
+        } else {
+            sendBtn.style.display = 'none';
+        }
+    }
+}
+
+function closeDraftDetailModal() {
+    const modal = document.getElementById('draft-detail-modal');
+    if (modal) modal.classList.remove('active');
+}
+
+// Initialize draft detail modal events
+function initDraftDetailModal() {
+    const modal = document.getElementById('draft-detail-modal');
+    if (!modal) return;
+    
+    // Close buttons
+    modal.querySelectorAll('.close-draft-detail').forEach(btn => {
+        btn.addEventListener('click', closeDraftDetailModal);
+    });
+    
+    // Close on overlay click
+    const overlay = modal.querySelector('.modal-overlay');
+    if (overlay) {
+        overlay.addEventListener('click', closeDraftDetailModal);
+    }
 }
 
 async function deleteAutoReplyDraft(draftId) {
@@ -4007,6 +4138,7 @@ function initDraftFilters() {
 document.addEventListener('DOMContentLoaded', () => {
     initAutoReplySettings();
     initDraftFilters();
+    initDraftDetailModal();
     
     // Load drafts when auto-reply options are visible
     setTimeout(() => {
@@ -4043,3 +4175,4 @@ window.rejectAutoReplyDraft = rejectAutoReplyDraft;
 window.viewDraftDetails = viewDraftDetails;
 window.deleteAutoReplyDraft = deleteAutoReplyDraft;
 window.deleteAllAutoReplyDrafts = deleteAllAutoReplyDrafts;
+window.closeDraftDetailModal = closeDraftDetailModal;
