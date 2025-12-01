@@ -618,7 +618,8 @@ def send_email():
                 recipient_email=recipient_email,
                 subject=generated_email['subject'],
                 body=generated_email['body'],
-                purpose=purpose
+                purpose=purpose,
+                user_id=user_id
             )
             
             # Auto-start monitor after sending email
@@ -1886,8 +1887,18 @@ def get_auto_reply_service():
     """Lazy initialization of auto-reply service"""
     global auto_reply_service
     if auto_reply_service is None:
+        print("🔄 Initializing Auto-Reply Service...")
         auto_reply_service = AutoReplyService(database, ai_agent, email_service)
+        print("✅ Auto-Reply Service initialized")
     return auto_reply_service
+
+# Initialize auto-reply tables on app start
+try:
+    print("🔄 Creating auto-reply tables if not exist...")
+    _service = get_auto_reply_service()
+    print("✅ Auto-reply tables ready")
+except Exception as e:
+    print(f"⚠️ Failed to initialize auto-reply tables: {e}")
 
 
 @app.route('/api/auto-reply/settings', methods=['GET'])

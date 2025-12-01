@@ -3299,6 +3299,7 @@ async function saveAllSettings() {
     }
     
     try {
+        // Save main settings
         const response = await authFetch(`${API_BASE}/api/user/settings`, {
             method: 'POST',
             body: JSON.stringify(settings)
@@ -3306,13 +3307,21 @@ async function saveAllSettings() {
         
         const data = await response.json();
         
+        // Also save auto-reply settings
+        const autoReplySuccess = await saveAutoReplySettings();
+        
         if (data.success) {
-            showToast('success', 'Thành công!', 'Đã lưu tất cả cài đặt');
+            if (autoReplySuccess) {
+                showToast('success', 'Thành công!', 'Đã lưu tất cả cài đặt');
+            } else {
+                showToast('warning', 'Cảnh báo', 'Đã lưu cài đặt chính, nhưng cài đặt Auto-Reply có lỗi');
+            }
             loadUserSettings(); // Reload to show masked values
         } else {
             showToast('error', 'Lỗi', data.error || 'Không thể lưu cài đặt');
         }
     } catch (error) {
+        console.error('Save settings error:', error);
         showToast('error', 'Lỗi kết nối', 'Không thể kết nối đến server');
     } finally {
         btn.disabled = false;
@@ -3745,21 +3754,6 @@ async function saveAutoReplySettings() {
     }
 }
 
-// Integrate with existing save settings
-const originalSaveSettings = window.saveSettings;
-window.saveSettings = async function() {
-    // Save auto-reply settings first
-    const autoReplySuccess = await saveAutoReplySettings();
-    if (!autoReplySuccess) {
-        console.warn('Failed to save auto-reply settings');
-    }
-    
-    // Call original save settings if exists
-    if (typeof originalSaveSettings === 'function') {
-        return originalSaveSettings();
-    }
-};
-
 // Initialize on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
     initAutoReplySettings();
@@ -3775,4 +3769,3 @@ window.deleteCv = deleteCv;
 window.removeAttachment = removeAttachment;
 window.loadAutoReplySettings = loadAutoReplySettings;
 window.saveAutoReplySettings = saveAutoReplySettings;
-

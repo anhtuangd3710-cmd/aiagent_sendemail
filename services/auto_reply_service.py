@@ -25,15 +25,19 @@ class AutoReplyService:
         """Ensure auto_reply tables exist"""
         try:
             # Check if table exists
+            logger.info("Checking if auto_reply_settings table exists...")
             result = self.database.query_raw("""
                 SELECT EXISTS (
                     SELECT FROM information_schema.tables 
-                    WHERE table_name = 'auto_reply_drafts'
+                    WHERE table_name = 'auto_reply_settings'
                 )
             """, one=True)
             
             if not result or not result.get('exists', False):
+                logger.info("Auto-reply tables not found, creating...")
                 self._create_tables()
+            else:
+                logger.info("Auto-reply tables already exist")
         except Exception as e:
             logger.warning(f"Table check failed, creating tables: {e}")
             self._create_tables()
