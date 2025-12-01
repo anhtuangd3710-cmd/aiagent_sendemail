@@ -2050,6 +2050,32 @@ def reject_auto_reply_api(token):
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+@app.route('/api/auto-reply/drafts/<int:draft_id>', methods=['DELETE'])
+@login_required
+def delete_auto_reply_draft(draft_id):
+    """Delete a specific auto-reply draft"""
+    try:
+        user_id = request.current_user['id']
+        service = get_auto_reply_service()
+        result = service.delete_draft(draft_id, user_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
+@app.route('/api/auto-reply/drafts', methods=['DELETE'])
+@login_required
+def delete_all_auto_reply_drafts():
+    """Delete all auto-reply drafts for current user"""
+    try:
+        user_id = request.current_user['id']
+        service = get_auto_reply_service()
+        result = service.delete_all_drafts(user_id)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
+
+
 # HTML Templates for confirmation pages
 CONFIRMATION_SUCCESS_HTML = """
 <!DOCTYPE html>

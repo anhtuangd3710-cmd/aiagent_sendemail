@@ -3858,6 +3858,9 @@ function renderDraftItem(draft) {
         <button class="btn-view" onclick="viewDraftDetails(${draft.id})">
             <i class="fas fa-eye"></i> Chi tiết
         </button>
+        <button class="btn-delete" onclick="deleteAutoReplyDraft(${draft.id})">
+            <i class="fas fa-trash"></i>
+        </button>
     `;
     
     return `
@@ -3945,6 +3948,46 @@ function viewDraftDetails(draftId) {
     showToast('info', 'Chi tiết', `Xem chi tiết draft #${draftId}`);
 }
 
+async function deleteAutoReplyDraft(draftId) {
+    if (!confirm('Bạn có chắc muốn xóa draft này?')) return;
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/auto-reply/drafts/${draftId}`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Đã xóa', 'Draft đã được xóa');
+            loadAutoReplyDrafts(currentDraftFilter);
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa draft');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi', 'Không thể kết nối server');
+    }
+}
+
+async function deleteAllAutoReplyDrafts() {
+    if (!confirm('Bạn có chắc muốn xóa TẤT CẢ lịch sử trả lời tự động?\n\nHành động này không thể hoàn tác!')) return;
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/auto-reply/drafts`, {
+            method: 'DELETE'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Đã xóa', `Đã xóa ${data.deleted_count || 'tất cả'} drafts`);
+            loadAutoReplyDrafts(currentDraftFilter);
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể xóa');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi', 'Không thể kết nối server');
+    }
+}
+
 function initDraftFilters() {
     const filterBtns = document.querySelectorAll('.drafts-filter .filter-btn');
     filterBtns.forEach(btn => {
@@ -3998,3 +4041,5 @@ window.loadAutoReplyDrafts = loadAutoReplyDrafts;
 window.confirmAutoReplyDraft = confirmAutoReplyDraft;
 window.rejectAutoReplyDraft = rejectAutoReplyDraft;
 window.viewDraftDetails = viewDraftDetails;
+window.deleteAutoReplyDraft = deleteAutoReplyDraft;
+window.deleteAllAutoReplyDrafts = deleteAllAutoReplyDrafts;

@@ -4822,6 +4822,22 @@ select:focus-visible {
     color: var(--primary-color);
 }
 
+.history-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-danger-outline {
+    border: 1px solid var(--danger-color) !important;
+    color: var(--danger-color) !important;
+    background: transparent !important;
+}
+
+.btn-danger-outline:hover {
+    background: var(--danger-color) !important;
+    color: white !important;
+}
+
 .drafts-filter {
     display: flex;
     gap: 8px;
@@ -5034,6 +5050,17 @@ select:focus-visible {
 .draft-actions .btn-view:hover {
     border-color: var(--primary-color);
     color: var(--primary-color);
+}
+
+.draft-actions .btn-delete {
+    background: transparent;
+    border: 1px solid var(--danger-color);
+    color: var(--danger-color);
+}
+
+.draft-actions .btn-delete:hover {
+    background: var(--danger-color);
+    color: white;
 }
 
 /* AI Reasoning */

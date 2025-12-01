@@ -636,6 +636,53 @@ Trả về JSON với format:
                ORDER BY created_at DESC""",
             (user_id,)
         )
+    
+    def delete_draft(self, draft_id: int, user_id: int) -> Dict:
+        """Delete a specific draft by ID (must belong to user)"""
+        try:
+            # Check if draft exists and belongs to user
+            draft = self.get_draft_by_id(draft_id)
+            if not draft:
+                return {"success": False, "error": "Draft không tồn tại"}
+            
+            if draft['user_id'] != user_id:
+                return {"success": False, "error": "Không có quyền xóa draft này"}
+            
+            self.database.execute_raw(
+                "DELETE FROM auto_reply_drafts WHERE id = %s",
+                (draft_id,)
+            )
+            
+            return {"success": True, "message": "Đã xóa draft"}
+        except Exception as e:
+            logger.error(f"Error deleting draft: {e}")
+            return {"success": False, "error": str(e)}
+    
+    def delete_all_drafts(self, user_id: int) -> Dict:
+        """Delete all drafts for a user"""
+        try:
+            # Get count first
+            result = self.database.query_raw(
+                "SELECT COUNT(*) as count FROM auto_reply_drafts WHERE user_id = %s",
+                (user_id,),
+                one=True
+            )
+            count = result['count'] if result else 0
+            
+            # Delete all
+            self.database.execute_raw(
+                "DELETE FROM auto_reply_drafts WHERE user_id = %s",
+                (user_id,)
+            )
+            
+            return {
+                "success": True, 
+                "message": f"Đã xóa {count} drafts",
+                "deleted_count": count
+            }
+        except Exception as e:
+            logger.error(f"Error deleting all drafts: {e}")
+            return {"success": False, "error": str(e)}
 
 
 # Need to import os for environment variables

@@ -973,9 +973,14 @@
                                 <div class="auto-reply-history">
                                     <div class="history-header">
                                         <h4><i class="fas fa-history"></i> Lịch sử trả lời tự động</h4>
-                                        <button class="btn btn-sm btn-outline" onclick="loadAutoReplyDrafts()">
-                                            <i class="fas fa-sync-alt"></i> Làm mới
-                                        </button>
+                                        <div class="history-actions">
+                                            <button class="btn btn-sm btn-outline" onclick="loadAutoReplyDrafts()">
+                                                <i class="fas fa-sync-alt"></i> Làm mới
+                                            </button>
+                                            <button class="btn btn-sm btn-danger-outline" onclick="deleteAllAutoReplyDrafts()">
+                                                <i class="fas fa-trash"></i> Xóa tất cả
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="drafts-filter">
                                         <button class="filter-btn active" data-status="all">Tất cả</button>
