@@ -3754,9 +3754,234 @@ async function saveAutoReplySettings() {
     }
 }
 
+// ==================== Auto-Reply Drafts History ====================
+
+let currentDraftFilter = 'all';
+
+async function loadAutoReplyDrafts(status = null) {
+    const listContainer = document.getElementById('auto-reply-drafts-list');
+    if (!listContainer) return;
+    
+    // Show loading
+    listContainer.innerHTML = `
+        <div class="loading-placeholder">
+            <i class="fas fa-spinner fa-spin"></i>
+            <span>Đang tải...</span>
+        </div>
+    `;
+    
+    try {
+        let url = `${API_BASE}/api/auto-reply/drafts`;
+        if (status && status !== 'all') {
+            url += `?status=${status}`;
+        }
+        
+        const response = await authFetch(url);
+        const data = await response.json();
+        
+        if (data.success) {
+            renderDraftsList(data.drafts || []);
+        } else {
+            listContainer.innerHTML = `
+                <div class="empty-drafts">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Không thể tải dữ liệu: ${data.error || 'Lỗi không xác định'}</p>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Error loading drafts:', error);
+        listContainer.innerHTML = `
+            <div class="empty-drafts">
+                <i class="fas fa-wifi"></i>
+                <p>Lỗi kết nối. Vui lòng thử lại.</p>
+            </div>
+        `;
+    }
+}
+
+function renderDraftsList(drafts) {
+    const listContainer = document.getElementById('auto-reply-drafts-list');
+    if (!listContainer) return;
+    
+    if (!drafts || drafts.length === 0) {
+        listContainer.innerHTML = `
+            <div class="empty-drafts">
+                <i class="fas fa-robot"></i>
+                <p>Chưa có email trả lời tự động nào</p>
+                <small>Khi có email phản hồi, AI sẽ tự động soạn draft ở đây</small>
+            </div>
+        `;
+        return;
+    }
+    
+    listContainer.innerHTML = drafts.map(draft => renderDraftItem(draft)).join('');
+}
+
+function renderDraftItem(draft) {
+    const statusLabels = {
+        'pending': 'Chờ xác nhận',
+        'sent': 'Đã gửi',
+        'rejected': 'Đã từ chối',
+        'expired': 'Hết hạn'
+    };
+    
+    const statusClass = draft.status || 'pending';
+    const statusLabel = statusLabels[statusClass] || draft.status;
+    
+    // Get initials for avatar
+    const fromName = draft.from_name || draft.from_email || 'U';
+    const initials = fromName.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+    
+    // Format date
+    const createdAt = draft.created_at ? new Date(draft.created_at).toLocaleString('vi-VN') : '';
+    
+    // Confidence badge
+    const confidence = draft.confidence_score || 0;
+    let confidenceClass = 'low';
+    if (confidence >= 0.9) confidenceClass = 'high';
+    else if (confidence >= 0.7) confidenceClass = 'medium';
+    
+    // Actions based on status
+    let actionsHtml = '';
+    if (draft.status === 'pending') {
+        actionsHtml = `
+            <button class="btn-confirm" onclick="confirmAutoReplyDraft('${draft.confirmation_token}')">
+                <i class="fas fa-check"></i> Gửi
+            </button>
+            <button class="btn-reject" onclick="rejectAutoReplyDraft('${draft.confirmation_token}')">
+                <i class="fas fa-times"></i> Từ chối
+            </button>
+        `;
+    }
+    actionsHtml += `
+        <button class="btn-view" onclick="viewDraftDetails(${draft.id})">
+            <i class="fas fa-eye"></i> Chi tiết
+        </button>
+    `;
+    
+    return `
+        <div class="draft-item" data-id="${draft.id}">
+            <div class="draft-header">
+                <div class="draft-recipient">
+                    <div class="draft-avatar">${initials}</div>
+                    <div class="draft-info">
+                        <h5>${draft.from_name || 'Không rõ tên'}</h5>
+                        <span>${draft.from_email}</span>
+                    </div>
+                </div>
+                <span class="draft-status ${statusClass}">${statusLabel}</span>
+            </div>
+            
+            <div class="draft-subject">
+                <i class="fas fa-reply"></i> ${draft.draft_subject || 'Không có tiêu đề'}
+            </div>
+            
+            <div class="draft-preview">${(draft.draft_body || '').substring(0, 150)}...</div>
+            
+            ${draft.ai_reasoning ? `
+                <div class="draft-reasoning">
+                    <strong>💡 AI:</strong> ${draft.ai_reasoning}
+                </div>
+            ` : ''}
+            
+            <div class="draft-meta">
+                <div>
+                    <span><i class="fas fa-clock"></i> ${createdAt}</span>
+                    <span class="confidence-badge ${confidenceClass}">
+                        <i class="fas fa-chart-line"></i> ${Math.round(confidence * 100)}%
+                    </span>
+                </div>
+                <div class="draft-actions">
+                    ${actionsHtml}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function confirmAutoReplyDraft(token) {
+    if (!confirm('Bạn có chắc muốn gửi email này?')) return;
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/auto-reply/confirm/${token}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('success', 'Thành công', 'Email đã được gửi!');
+            loadAutoReplyDrafts(currentDraftFilter);
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể gửi email');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi', 'Không thể kết nối server');
+    }
+}
+
+async function rejectAutoReplyDraft(token) {
+    if (!confirm('Bạn có chắc muốn từ chối email này?')) return;
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/auto-reply/reject/${token}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            showToast('info', 'Đã từ chối', 'Email đã bị từ chối');
+            loadAutoReplyDrafts(currentDraftFilter);
+        } else {
+            showToast('error', 'Lỗi', data.error || 'Không thể từ chối');
+        }
+    } catch (error) {
+        showToast('error', 'Lỗi', 'Không thể kết nối server');
+    }
+}
+
+function viewDraftDetails(draftId) {
+    // TODO: Show modal with full draft details
+    showToast('info', 'Chi tiết', `Xem chi tiết draft #${draftId}`);
+}
+
+function initDraftFilters() {
+    const filterBtns = document.querySelectorAll('.drafts-filter .filter-btn');
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+            // Update active state
+            filterBtns.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Load with filter
+            currentDraftFilter = btn.dataset.status || 'all';
+            loadAutoReplyDrafts(currentDraftFilter);
+        });
+    });
+}
+
 // Initialize on DOMContentLoaded
 document.addEventListener('DOMContentLoaded', () => {
     initAutoReplySettings();
+    initDraftFilters();
+    
+    // Load drafts when auto-reply options are visible
+    setTimeout(() => {
+        const optionsDiv = document.getElementById('auto-reply-options');
+        if (optionsDiv && optionsDiv.style.display !== 'none') {
+            loadAutoReplyDrafts();
+        }
+    }, 500);
+    
+    // Load drafts when auto-reply is enabled
+    const autoReplyEnabled = document.getElementById('auto-reply-enabled');
+    if (autoReplyEnabled) {
+        autoReplyEnabled.addEventListener('change', () => {
+            if (autoReplyEnabled.checked) {
+                loadAutoReplyDrafts();
+            }
+        });
+    }
 });
 
 // Make functions globally available
@@ -3769,3 +3994,7 @@ window.deleteCv = deleteCv;
 window.removeAttachment = removeAttachment;
 window.loadAutoReplySettings = loadAutoReplySettings;
 window.saveAutoReplySettings = saveAutoReplySettings;
+window.loadAutoReplyDrafts = loadAutoReplyDrafts;
+window.confirmAutoReplyDraft = confirmAutoReplyDraft;
+window.rejectAutoReplyDraft = rejectAutoReplyDraft;
+window.viewDraftDetails = viewDraftDetails;

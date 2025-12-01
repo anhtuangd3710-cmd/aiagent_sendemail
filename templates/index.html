@@ -968,6 +968,29 @@
                                     </div>
                                     <p class="option-desc">Email ngoài giờ làm việc sẽ được xử lý vào ngày hôm sau</p>
                                 </div>
+                                
+                                <!-- Auto-Reply History -->
+                                <div class="auto-reply-history">
+                                    <div class="history-header">
+                                        <h4><i class="fas fa-history"></i> Lịch sử trả lời tự động</h4>
+                                        <button class="btn btn-sm btn-outline" onclick="loadAutoReplyDrafts()">
+                                            <i class="fas fa-sync-alt"></i> Làm mới
+                                        </button>
+                                    </div>
+                                    <div class="drafts-filter">
+                                        <button class="filter-btn active" data-status="all">Tất cả</button>
+                                        <button class="filter-btn" data-status="pending">Chờ xác nhận</button>
+                                        <button class="filter-btn" data-status="sent">Đã gửi</button>
+                                        <button class="filter-btn" data-status="rejected">Đã từ chối</button>
+                                        <button class="filter-btn" data-status="expired">Hết hạn</button>
+                                    </div>
+                                    <div class="drafts-list" id="auto-reply-drafts-list">
+                                        <div class="loading-placeholder">
+                                            <i class="fas fa-spinner fa-spin"></i>
+                                            <span>Đang tải...</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
