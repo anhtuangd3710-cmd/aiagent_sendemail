@@ -3077,11 +3077,15 @@ body {
     background: rgba(0, 0, 0, 0.5);
     z-index: 99;
     opacity: 0;
+    pointer-events: none; /* Không chặn click khi không active */
     transition: opacity 0.3s ease;
+    visibility: hidden;
 }
 
 .sidebar-overlay.active {
     opacity: 1;
+    pointer-events: auto; /* Chỉ cho phép click khi active */
+    visibility: visible;
 }
 
 /* ==================== TABLET (769px - 1024px) ==================== */
@@ -3169,11 +3173,20 @@ body {
     
     .sidebar-overlay {
         display: block;
+        /* Mặc định ẩn và không chặn click */
+        pointer-events: none;
+        visibility: hidden;
+    }
+    
+    .sidebar-overlay.active {
+        pointer-events: auto;
+        visibility: visible;
     }
     
     .sidebar {
         transform: translateX(-100%);
         width: 280px;
+        z-index: 100;
     }
     
     .sidebar.open {
@@ -3183,6 +3196,8 @@ body {
     .main-content {
         margin-left: 0;
         width: 100%;
+        position: relative;
+        z-index: 1;
     }
     
     .header {
@@ -3193,6 +3208,8 @@ body {
         gap: 12px;
         height: auto;
         min-height: var(--header-height);
+        position: relative;
+        z-index: 50;
     }
     
     .header-title h1 {
@@ -3210,6 +3227,8 @@ body {
     
     .content {
         padding: 16px;
+        position: relative;
+        z-index: 1;
     }
     
     /* Compose Page Mobile */
@@ -3221,8 +3240,20 @@ body {
         gap: 16px;
     }
     
+    .card {
+        position: relative;
+        z-index: 1;
+    }
+    
+    .form-group {
+        position: relative;
+        z-index: 1;
+    }
+    
     .form-group label {
         font-size: 0.875rem;
+        display: block;
+        margin-bottom: 8px;
     }
     
     .form-group input,
@@ -3230,6 +3261,31 @@ body {
     .form-group select {
         padding: 12px;
         font-size: 16px; /* Prevent zoom on iOS */
+        width: 100%;
+        display: block;
+        -webkit-appearance: none;
+        -moz-appearance: none;
+        appearance: none;
+        border-radius: var(--border-radius-sm);
+        border: 1px solid var(--border-color);
+        background: var(--bg-secondary);
+        touch-action: manipulation;
+    }
+    
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px var(--primary-light);
+    }
+    
+    /* Đảm bảo buttons có thể nhấn được */
+    .btn {
+        position: relative;
+        z-index: 1;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(99, 102, 241, 0.3);
     }
     
     .tone-selector {
@@ -3240,6 +3296,21 @@ body {
     .tone-option {
         padding: 10px 8px;
         font-size: 0.8rem;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .tone-option input[type="radio"] {
+        position: absolute;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+        z-index: 2;
+    }
+    
+    .tone-card {
+        pointer-events: none;
     }
     
     .language-selector {
@@ -3250,16 +3321,36 @@ body {
     .language-option {
         padding: 8px;
         font-size: 0.8rem;
+        position: relative;
+        z-index: 1;
     }
     
-    .compose-actions {
+    .language-option input[type="radio"] {
+        position: absolute;
+        opacity: 0;
+        width: 100%;
+        height: 100%;
+        cursor: pointer;
+        z-index: 2;
+    }
+    
+    .language-card {
+        pointer-events: none;
+    }
+    
+    .compose-actions,
+    .form-actions {
         flex-direction: column;
         gap: 12px;
+        position: relative;
+        z-index: 1;
     }
     
-    .compose-actions .btn {
+    .compose-actions .btn,
+    .form-actions .btn {
         width: 100%;
         justify-content: center;
+        min-height: 48px;
     }
     
     /* Preview Section Mobile */
@@ -4005,6 +4096,118 @@ select:focus-visible {
     textarea,
     select {
         min-height: 44px;
+    }
+    
+    /* Đảm bảo tất cả interactive elements có thể nhấn được */
+    * {
+        -webkit-tap-highlight-color: rgba(99, 102, 241, 0.2);
+    }
+    
+    /* Ngăn chặn các element chặn touch */
+    .main-content,
+    .content,
+    .page,
+    .card,
+    .card-body,
+    .compose-container,
+    .inbox-container,
+    .cv-container,
+    .monitor-container,
+    .settings-container,
+    .profile-container {
+        pointer-events: auto !important;
+    }
+    
+    /* Đảm bảo form có thể tương tác */
+    .form-group,
+    .form-row {
+        pointer-events: auto !important;
+    }
+    
+    input,
+    textarea,
+    select,
+    button,
+    .btn,
+    a {
+        pointer-events: auto !important;
+        cursor: pointer;
+    }
+    
+    /* Fix cho iOS Safari */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="url"],
+    textarea {
+        -webkit-appearance: none;
+        -webkit-border-radius: 0;
+        border-radius: var(--border-radius-sm);
+    }
+}
+
+/* ==================== GLOBAL MOBILE FIXES ==================== */
+@media (max-width: 768px) {
+    /* Đảm bảo không có element nào chặn interaction */
+    body {
+        -webkit-text-size-adjust: 100%;
+        -webkit-tap-highlight-color: rgba(0, 0, 0, 0);
+    }
+    
+    /* Ngăn sidebar-overlay chặn content khi không active */
+    .sidebar-overlay:not(.active) {
+        pointer-events: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+    
+    /* Page active phải có thể tương tác */
+    .page.active {
+        pointer-events: auto;
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Cards và form groups */
+    .card {
+        pointer-events: auto;
+    }
+    
+    /* Fix cho inputs */
+    input, textarea, select {
+        touch-action: manipulation;
+        -webkit-user-select: text;
+        user-select: text;
+    }
+    
+    /* Email và CV items có thể nhấn */
+    .email-item,
+    .cv-item {
+        cursor: pointer;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: rgba(99, 102, 241, 0.3);
+    }
+    
+    /* Buttons */
+    .btn,
+    button {
+        touch-action: manipulation;
+        cursor: pointer;
+    }
+    
+    /* Radio buttons và checkboxes */
+    input[type="radio"],
+    input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+        cursor: pointer;
+    }
+    
+    /* Labels có thể click */
+    label {
+        cursor: pointer;
+        touch-action: manipulation;
     }
 }
 
