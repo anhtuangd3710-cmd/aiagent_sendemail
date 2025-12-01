@@ -3285,58 +3285,159 @@ body {
     }
     
     /* Email List Mobile */
-    .inbox-header {
+    .inbox-container {
+        padding: 8px;
+    }
+    
+    .inbox-toolbar {
         flex-direction: column;
         gap: 12px;
-        padding: 16px;
+        padding: 8px 0;
     }
     
     .search-box {
         width: 100%;
+        min-width: auto;
     }
     
     .filter-buttons {
         width: 100%;
         justify-content: center;
         flex-wrap: wrap;
+        gap: 6px;
     }
     
     .btn-filter {
         flex: 1;
-        min-width: auto;
-        padding: 8px 12px;
+        min-width: 80px;
+        padding: 10px 12px;
         font-size: 0.8rem;
     }
     
     .email-list {
-        padding: 8px;
+        padding: 0;
+        gap: 10px;
     }
     
     .email-item {
-        padding: 12px;
-        flex-direction: column;
+        padding: 14px;
+        flex-direction: row;
         gap: 12px;
+        cursor: pointer;
+        position: relative;
+        z-index: 1;
+        /* Đảm bảo có thể nhấn được trên mobile */
+        -webkit-tap-highlight-color: rgba(99, 102, 241, 0.2);
+        touch-action: manipulation;
+    }
+    
+    .email-item::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: -1;
+    }
+    
+    .email-item:active {
+        background: var(--primary-light);
+        transform: scale(0.98);
+    }
+    
+    .email-item-left {
+        flex-shrink: 0;
+    }
+    
+    .email-avatar {
+        width: 40px;
+        height: 40px;
+        font-size: 0.9rem;
     }
     
     .email-item-main {
         width: 100%;
+        min-width: 0;
+        flex: 1;
     }
     
-    .email-item-meta {
+    .email-item-header {
+        flex-direction: column;
+        gap: 4px;
+    }
+    
+    .email-recipient-info {
         width: 100%;
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
+    }
+    
+    .email-recipient {
+        font-size: 0.95rem;
+    }
+    
+    .email-recipient-email {
+        font-size: 0.7rem;
+    }
+    
+    .email-meta {
+        width: 100%;
+        justify-content: flex-start;
+        gap: 8px;
+    }
+    
+    .email-type-badge {
+        font-size: 0.65rem;
+        padding: 2px 6px;
+    }
+    
+    .email-date {
+        font-size: 0.7rem;
+    }
+    
+    .email-subject {
+        font-size: 0.85rem;
+    }
+    
+    .email-purpose {
+        font-size: 0.75rem;
+        -webkit-line-clamp: 2;
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    
+    .response-preview {
+        padding: 8px 10px;
+        font-size: 0.75rem;
+    }
+    
+    .email-response-status {
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    
+    .status-badge {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+    }
+    
+    .response-indicator {
+        font-size: 0.75rem;
     }
     
     .email-thread {
-        padding: 12px;
+        padding: 0;
+        margin-bottom: 10px;
     }
     
     .thread-replies {
         margin-left: 0;
-        padding-left: 12px;
-        border-left: 2px solid var(--border-color);
+        padding-left: 10px;
+        border-left: 2px solid var(--primary-color);
+    }
+    
+    .thread-reply {
+        margin-left: 0;
     }
     
     /* CV Page Mobile */
@@ -3461,36 +3562,110 @@ body {
     }
     
     /* Modals Mobile */
+    .modal {
+        padding: 0;
+        z-index: 1000;
+    }
+    
+    .modal.active {
+        display: flex;
+        align-items: flex-end; /* Slide từ dưới lên */
+    }
+    
+    .modal-overlay {
+        z-index: 1001;
+    }
+    
     .modal-content {
-        width: 95%;
+        width: 100%;
         max-width: none;
-        margin: 16px;
-        max-height: 90vh;
-        border-radius: var(--border-radius);
+        margin: 0;
+        max-height: 85vh;
+        border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+        z-index: 1002;
+        animation: slideUpModal 0.3s ease;
+    }
+    
+    @keyframes slideUpModal {
+        from {
+            transform: translateY(100%);
+        }
+        to {
+            transform: translateY(0);
+        }
     }
     
     .modal-header {
         padding: 16px;
+        position: sticky;
+        top: 0;
+        background: var(--bg-card);
+        z-index: 10;
     }
     
-    .modal-header h3 {
-        font-size: 1.1rem;
+    .modal-header h2 {
+        font-size: 1rem;
+    }
+    
+    .modal-header .btn-icon {
+        min-width: 44px;
+        min-height: 44px;
     }
     
     .modal-body {
         padding: 16px;
-        max-height: 60vh;
+        max-height: 50vh;
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
     }
     
     .modal-footer {
         padding: 16px;
+        padding-bottom: 24px; /* Thêm padding cho safe area */
         flex-direction: column;
         gap: 12px;
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-card);
+        border-top: 1px solid var(--border-color);
     }
     
     .modal-footer .btn {
         width: 100%;
+        min-height: 48px;
+    }
+    
+    /* Email Detail Modal cụ thể */
+    #email-modal .modal-content,
+    #cv-modal .modal-content {
+        max-height: 90vh;
+    }
+    
+    #email-modal .modal-body,
+    #cv-modal .modal-body {
+        max-height: 60vh;
+    }
+    
+    .email-detail-section {
+        margin-bottom: 16px;
+        padding: 12px;
+        background: var(--bg-primary);
+        border-radius: var(--border-radius-sm);
+    }
+    
+    .email-detail-section h4 {
+        font-size: 0.75rem;
+        margin-bottom: 6px;
+    }
+    
+    .email-detail-section p {
+        font-size: 0.85rem;
+    }
+    
+    .email-detail-section .body-content {
+        font-size: 0.8rem;
+        max-height: 150px;
+        overflow-y: auto;
     }
     
     /* Reply Modal Mobile */

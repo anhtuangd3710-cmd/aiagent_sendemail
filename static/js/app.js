@@ -999,7 +999,47 @@ function createEmailThread(thread) {
 function createEmailItem(email, isReply = false, hasMoreReplies = false) {
     const item = document.createElement('div');
     item.className = 'email-item' + (isReply ? ' is-reply' : '');
-    item.onclick = () => showEmailDetail(email);
+    
+    // Sử dụng touch event để cải thiện trải nghiệm trên mobile
+    let touchStartY = 0;
+    let touchMoved = false;
+    
+    item.addEventListener('touchstart', (e) => {
+        touchStartY = e.touches[0].clientY;
+        touchMoved = false;
+    }, { passive: true });
+    
+    item.addEventListener('touchmove', (e) => {
+        const touchCurrentY = e.touches[0].clientY;
+        if (Math.abs(touchCurrentY - touchStartY) > 10) {
+            touchMoved = true;
+        }
+    }, { passive: true });
+    
+    item.addEventListener('touchend', (e) => {
+        if (!touchMoved) {
+            e.preventDefault();
+            showEmailDetail(email);
+        }
+    });
+    
+    // Giữ click handler cho desktop
+    item.addEventListener('click', (e) => {
+        // Chỉ xử lý click trên desktop (không phải touch device)
+        if (!('ontouchstart' in window)) {
+            showEmailDetail(email);
+        }
+    });
+    
+    // Keyboard accessibility
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
+    item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            showEmailDetail(email);
+        }
+    });
     
     const initials = email.recipient_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
     const date = new Date(email.sent_at).toLocaleDateString('vi-VN', {
@@ -2512,7 +2552,46 @@ function renderCvEvaluations() {
 function createCvItem(cv) {
     const item = document.createElement('div');
     item.className = `cv-item ${cv.is_qualified ? 'qualified' : 'not-qualified'}`;
-    item.onclick = () => showCvDetailModal(cv);
+    
+    // Sử dụng touch event để cải thiện trải nghiệm trên mobile
+    let touchStartY = 0;
+    let touchMoved = false;
+    
+    item.addEventListener('touchstart', (e) => {
+        touchStartY = e.touches[0].clientY;
+        touchMoved = false;
+    }, { passive: true });
+    
+    item.addEventListener('touchmove', (e) => {
+        const touchCurrentY = e.touches[0].clientY;
+        if (Math.abs(touchCurrentY - touchStartY) > 10) {
+            touchMoved = true;
+        }
+    }, { passive: true });
+    
+    item.addEventListener('touchend', (e) => {
+        if (!touchMoved) {
+            e.preventDefault();
+            showCvDetailModal(cv);
+        }
+    });
+    
+    // Giữ click handler cho desktop
+    item.addEventListener('click', (e) => {
+        if (!('ontouchstart' in window)) {
+            showCvDetailModal(cv);
+        }
+    });
+    
+    // Keyboard accessibility
+    item.setAttribute('role', 'button');
+    item.setAttribute('tabindex', '0');
+    item.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            showCvDetailModal(cv);
+        }
+    });
     
     const scoreClass = cv.overall_score >= 85 ? 'high' : (cv.overall_score >= 60 ? 'medium' : 'low');
     
