@@ -256,6 +256,8 @@ function initNavigation() {
             e.preventDefault();
             const page = item.dataset.page;
             navigateTo(page);
+            // Close mobile sidebar after navigation
+            closeMobileSidebar();
         });
     });
     
@@ -263,6 +265,77 @@ function initNavigation() {
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) {
         logoutBtn.addEventListener('click', logout);
+    }
+    
+    // Initialize mobile menu
+    initMobileMenu();
+}
+
+// ==================== Mobile Menu ====================
+
+function initMobileMenu() {
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    if (menuToggle && sidebar && overlay) {
+        // Toggle menu button
+        menuToggle.addEventListener('click', () => {
+            toggleMobileSidebar();
+        });
+        
+        // Close on overlay click
+        overlay.addEventListener('click', () => {
+            closeMobileSidebar();
+        });
+        
+        // Close on escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeMobileSidebar();
+            }
+        });
+        
+        // Close sidebar on window resize to desktop
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) {
+                closeMobileSidebar();
+            }
+        });
+    }
+}
+
+function toggleMobileSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    
+    if (sidebar && overlay) {
+        const isOpen = sidebar.classList.contains('open');
+        
+        if (isOpen) {
+            closeMobileSidebar();
+        } else {
+            sidebar.classList.add('open');
+            overlay.classList.add('active');
+            menuToggle.innerHTML = '<i class="fas fa-times"></i>';
+            document.body.style.overflow = 'hidden';
+        }
+    }
+}
+
+function closeMobileSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    
+    if (sidebar && overlay) {
+        sidebar.classList.remove('open');
+        overlay.classList.remove('active');
+        if (menuToggle) {
+            menuToggle.innerHTML = '<i class="fas fa-bars"></i>';
+        }
+        document.body.style.overflow = '';
     }
 }
 

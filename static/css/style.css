@@ -3041,3 +3041,795 @@ body {
     font-weight: 500;
 }
 
+/* ==================== COMPREHENSIVE RESPONSIVE STYLES ==================== */
+
+/* Mobile Menu Toggle Button */
+.mobile-menu-toggle {
+    display: none;
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 200;
+    width: 44px;
+    height: 44px;
+    border: none;
+    background: var(--primary-color);
+    color: white;
+    border-radius: var(--border-radius-sm);
+    cursor: pointer;
+    font-size: 1.25rem;
+    box-shadow: var(--shadow-md);
+    transition: all 0.3s ease;
+}
+
+.mobile-menu-toggle:hover {
+    background: var(--primary-hover);
+}
+
+/* Sidebar Overlay for Mobile */
+.sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 99;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.sidebar-overlay.active {
+    opacity: 1;
+}
+
+/* ==================== TABLET (769px - 1024px) ==================== */
+@media (max-width: 1024px) {
+    :root {
+        --sidebar-width: 220px;
+    }
+    
+    .compose-container {
+        padding: 20px;
+    }
+    
+    .compose-container.with-preview {
+        grid-template-columns: 1fr;
+        gap: 20px;
+    }
+    
+    .preview-section {
+        position: relative;
+        max-height: none;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
+    .tone-selector {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .language-selector {
+        grid-template-columns: repeat(3, 1fr);
+    }
+    
+    .monitor-info {
+        flex-direction: column;
+        text-align: center;
+        gap: 16px;
+    }
+    
+    .monitor-status-large {
+        flex-direction: column;
+        gap: 16px;
+    }
+    
+    .inbox-header {
+        flex-direction: column;
+        gap: 16px;
+    }
+    
+    .inbox-header .search-box {
+        width: 100%;
+    }
+    
+    .cv-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .cv-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .settings-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .profile-info {
+        flex-direction: column;
+        text-align: center;
+        gap: 16px;
+    }
+    
+    .ai-provider-selector {
+        flex-direction: column;
+    }
+}
+
+/* ==================== MOBILE LANDSCAPE & SMALL TABLETS (481px - 768px) ==================== */
+@media (max-width: 768px) {
+    .mobile-menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .sidebar-overlay {
+        display: block;
+    }
+    
+    .sidebar {
+        transform: translateX(-100%);
+        width: 280px;
+    }
+    
+    .sidebar.open {
+        transform: translateX(0);
+    }
+    
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .header {
+        padding: 16px;
+        padding-left: 70px; /* Space for menu button */
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        height: auto;
+        min-height: var(--header-height);
+    }
+    
+    .header-title h1 {
+        font-size: 1.25rem;
+    }
+    
+    .header-title p {
+        font-size: 0.8rem;
+    }
+    
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .content {
+        padding: 16px;
+    }
+    
+    /* Compose Page Mobile */
+    .compose-container {
+        padding: 16px;
+    }
+    
+    .compose-form {
+        gap: 16px;
+    }
+    
+    .form-group label {
+        font-size: 0.875rem;
+    }
+    
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+        padding: 12px;
+        font-size: 16px; /* Prevent zoom on iOS */
+    }
+    
+    .tone-selector {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px;
+    }
+    
+    .tone-option {
+        padding: 10px 8px;
+        font-size: 0.8rem;
+    }
+    
+    .language-selector {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+    }
+    
+    .language-option {
+        padding: 8px;
+        font-size: 0.8rem;
+    }
+    
+    .compose-actions {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .compose-actions .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    /* Preview Section Mobile */
+    .preview-section {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 150;
+        margin: 0;
+        border-radius: 0;
+        max-height: 100vh;
+        overflow-y: auto;
+    }
+    
+    .preview-header {
+        position: sticky;
+        top: 0;
+        background: var(--bg-card);
+        z-index: 10;
+        padding: 16px;
+    }
+    
+    /* Email List Mobile */
+    .inbox-header {
+        flex-direction: column;
+        gap: 12px;
+        padding: 16px;
+    }
+    
+    .search-box {
+        width: 100%;
+    }
+    
+    .filter-buttons {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    
+    .btn-filter {
+        flex: 1;
+        min-width: auto;
+        padding: 8px 12px;
+        font-size: 0.8rem;
+    }
+    
+    .email-list {
+        padding: 8px;
+    }
+    
+    .email-item {
+        padding: 12px;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .email-item-main {
+        width: 100%;
+    }
+    
+    .email-item-meta {
+        width: 100%;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .email-thread {
+        padding: 12px;
+    }
+    
+    .thread-replies {
+        margin-left: 0;
+        padding-left: 12px;
+        border-left: 2px solid var(--border-color);
+    }
+    
+    /* CV Page Mobile */
+    .cv-upload-section {
+        padding: 16px;
+    }
+    
+    .cv-stats {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .cv-stat-item {
+        padding: 16px;
+    }
+    
+    .cv-list {
+        padding: 8px;
+    }
+    
+    .cv-item {
+        padding: 12px;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .cv-item-info {
+        width: 100%;
+    }
+    
+    .cv-item-score {
+        width: 100%;
+        text-align: center;
+    }
+    
+    .cv-score-display {
+        flex-direction: column;
+        text-align: center;
+        gap: 16px;
+    }
+    
+    .cv-evaluation-details,
+    .cv-strengths-weaknesses {
+        grid-template-columns: 1fr;
+    }
+    
+    /* Monitor Page Mobile */
+    .monitor-controls {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .monitor-controls .btn {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .activity-log {
+        max-height: 300px;
+    }
+    
+    .log-item {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .log-time {
+        font-size: 0.75rem;
+    }
+    
+    /* Settings Page Mobile */
+    .settings-grid {
+        gap: 16px;
+    }
+    
+    .settings-section {
+        padding: 16px;
+    }
+    
+    .setting-item {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .setting-item label {
+        width: 100%;
+    }
+    
+    .setting-item input,
+    .setting-item select {
+        width: 100%;
+    }
+    
+    /* Profile Page Mobile */
+    .profile-section {
+        padding: 16px;
+    }
+    
+    .profile-info {
+        flex-direction: column;
+        text-align: center;
+        gap: 16px;
+    }
+    
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        font-size: 2rem;
+    }
+    
+    .ai-provider-selector {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .provider-option {
+        width: 100%;
+    }
+    
+    .api-config-section input {
+        font-size: 14px;
+    }
+    
+    /* Modals Mobile */
+    .modal-content {
+        width: 95%;
+        max-width: none;
+        margin: 16px;
+        max-height: 90vh;
+        border-radius: var(--border-radius);
+    }
+    
+    .modal-header {
+        padding: 16px;
+    }
+    
+    .modal-header h3 {
+        font-size: 1.1rem;
+    }
+    
+    .modal-body {
+        padding: 16px;
+        max-height: 60vh;
+        overflow-y: auto;
+    }
+    
+    .modal-footer {
+        padding: 16px;
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .modal-footer .btn {
+        width: 100%;
+    }
+    
+    /* Reply Modal Mobile */
+    .reply-purpose-suggestions {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .reply-purpose-suggestions .btn {
+        width: 100%;
+    }
+    
+    /* Analysis Grid Mobile */
+    .analysis-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .analysis-item {
+        padding: 12px;
+    }
+    
+    /* Toast Mobile */
+    .toast-container {
+        bottom: 16px;
+        right: 16px;
+        left: 16px;
+        max-width: none;
+    }
+    
+    .toast {
+        width: 100%;
+    }
+    
+    /* File Upload Mobile */
+    .file-upload-area {
+        padding: 16px;
+    }
+    
+    .attachment-list {
+        max-height: 150px;
+    }
+    
+    .attachment-item {
+        padding: 8px;
+    }
+    
+    /* Login Required Overlay */
+    .login-required-content {
+        padding: 24px;
+        margin: 16px;
+    }
+    
+    /* User Info in Sidebar */
+    .user-info {
+        padding: 12px;
+    }
+    
+    .user-details {
+        display: block; /* Show on mobile sidebar */
+    }
+    
+    /* Buttons Mobile */
+    .btn {
+        padding: 10px 16px;
+        font-size: 0.875rem;
+    }
+    
+    .btn-lg {
+        padding: 12px 20px;
+    }
+    
+    /* Cards Mobile */
+    .card {
+        border-radius: var(--border-radius-sm);
+    }
+    
+    .card-header {
+        padding: 12px 16px;
+    }
+    
+    .card-body {
+        padding: 16px;
+    }
+    
+    /* Data Management Mobile */
+    .btn-group {
+        flex-direction: column;
+    }
+    
+    .btn-group .btn {
+        width: 100%;
+    }
+}
+
+/* ==================== MOBILE PORTRAIT (max-width: 480px) ==================== */
+@media (max-width: 480px) {
+    :root {
+        font-size: 14px;
+    }
+    
+    .header {
+        padding: 12px;
+        padding-left: 60px;
+    }
+    
+    .header-title h1 {
+        font-size: 1.1rem;
+    }
+    
+    .header-title p {
+        font-size: 0.75rem;
+    }
+    
+    .content {
+        padding: 12px;
+    }
+    
+    /* Compose */
+    .compose-container {
+        padding: 12px;
+    }
+    
+    .tone-selector {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .tone-option {
+        padding: 8px 6px;
+        font-size: 0.75rem;
+    }
+    
+    .tone-option i {
+        font-size: 1rem;
+    }
+    
+    .language-selector {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .language-option {
+        padding: 6px;
+        font-size: 0.75rem;
+    }
+    
+    /* Email List */
+    .email-item {
+        padding: 10px;
+    }
+    
+    .email-item-name {
+        font-size: 0.9rem;
+    }
+    
+    .email-item-subject {
+        font-size: 0.8rem;
+    }
+    
+    .email-item-purpose {
+        font-size: 0.75rem;
+    }
+    
+    /* CV */
+    .cv-item {
+        padding: 10px;
+    }
+    
+    .cv-item-name {
+        font-size: 0.9rem;
+    }
+    
+    .cv-stat-value {
+        font-size: 1.5rem;
+    }
+    
+    /* Modal */
+    .modal-content {
+        margin: 8px;
+        width: calc(100% - 16px);
+    }
+    
+    .modal-header h3 {
+        font-size: 1rem;
+    }
+    
+    .modal-body {
+        padding: 12px;
+    }
+    
+    /* Sidebar when open */
+    .sidebar {
+        width: 100%;
+    }
+    
+    .logo span {
+        font-size: 1.1rem;
+    }
+    
+    .nav-item {
+        padding: 12px 14px;
+        font-size: 0.9rem;
+    }
+    
+    /* Filter buttons */
+    .filter-buttons {
+        gap: 4px;
+    }
+    
+    .btn-filter {
+        padding: 6px 10px;
+        font-size: 0.75rem;
+    }
+    
+    /* Analysis */
+    .analysis-item h4 {
+        font-size: 0.85rem;
+    }
+    
+    .analysis-item p {
+        font-size: 0.8rem;
+    }
+    
+    /* Profile */
+    .profile-avatar {
+        width: 64px;
+        height: 64px;
+        font-size: 1.5rem;
+    }
+    
+    /* Empty State */
+    .empty-state i {
+        font-size: 3rem;
+    }
+    
+    .empty-state h3 {
+        font-size: 1.1rem;
+    }
+    
+    .empty-state p {
+        font-size: 0.85rem;
+    }
+}
+
+/* ==================== LANDSCAPE PHONE ==================== */
+@media (max-height: 500px) and (orientation: landscape) {
+    .header {
+        height: auto;
+        min-height: 50px;
+        padding: 8px 16px;
+        padding-left: 60px;
+    }
+    
+    .header-title h1 {
+        font-size: 1rem;
+    }
+    
+    .header-title p {
+        display: none;
+    }
+    
+    .content {
+        padding: 8px;
+    }
+    
+    .modal-content {
+        max-height: 95vh;
+    }
+    
+    .modal-body {
+        max-height: 50vh;
+    }
+}
+
+/* ==================== PRINT STYLES ==================== */
+@media print {
+    .sidebar,
+    .header,
+    .mobile-menu-toggle,
+    .sidebar-overlay,
+    .modal,
+    .toast-container,
+    .compose-actions,
+    .filter-buttons,
+    .btn {
+        display: none !important;
+    }
+    
+    .main-content {
+        margin-left: 0;
+        width: 100%;
+    }
+    
+    .content {
+        padding: 0;
+    }
+    
+    .email-item,
+    .cv-item {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}
+
+/* ==================== ACCESSIBILITY ==================== */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Focus styles for keyboard navigation */
+.btn:focus-visible,
+.nav-item:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+/* Touch-friendly tap targets */
+@media (pointer: coarse) {
+    .btn,
+    .nav-item,
+    .tone-option,
+    .language-option,
+    .btn-filter,
+    .email-item,
+    .cv-item {
+        min-height: 44px;
+    }
+    
+    input,
+    textarea,
+    select {
+        min-height: 44px;
+    }
+}
+
