@@ -3906,8 +3906,105 @@ function renderDraftItem(draft) {
     `;
 }
 
+// Custom Confirm Modal
+let confirmResolve = null;
+
+function showConfirmModal(options = {}) {
+    return new Promise((resolve) => {
+        confirmResolve = resolve;
+        
+        const modal = document.getElementById('custom-confirm-modal');
+        if (!modal) {
+            resolve(window.confirm(options.message || 'Bạn có chắc chắn?'));
+            return;
+        }
+        
+        const {
+            title = 'Xác nhận',
+            message = 'Bạn có chắc chắn muốn thực hiện hành động này?',
+            submessage = '',
+            type = 'warning', // warning, danger, info, success
+            confirmText = 'Xác nhận',
+            cancelText = 'Hủy',
+            confirmClass = 'btn-primary'
+        } = options;
+        
+        // Set content
+        document.getElementById('confirm-title').textContent = title;
+        document.getElementById('confirm-message').textContent = message;
+        
+        const submsgEl = document.getElementById('confirm-submessage');
+        if (submessage) {
+            submsgEl.textContent = submessage;
+            submsgEl.style.display = 'block';
+        } else {
+            submsgEl.style.display = 'none';
+        }
+        
+        // Set icon type
+        const iconEl = document.getElementById('confirm-icon');
+        iconEl.className = `confirm-icon ${type}`;
+        
+        const icons = {
+            warning: 'fa-exclamation-triangle',
+            danger: 'fa-trash-alt',
+            info: 'fa-question-circle',
+            success: 'fa-check-circle'
+        };
+        iconEl.innerHTML = `<i class="fas ${icons[type] || icons.warning}"></i>`;
+        
+        // Set buttons
+        const okBtn = document.getElementById('confirm-ok-btn');
+        const cancelBtn = document.getElementById('confirm-cancel-btn');
+        
+        okBtn.innerHTML = `<i class="fas fa-check"></i> ${confirmText}`;
+        okBtn.className = `btn ${confirmClass}`;
+        cancelBtn.innerHTML = `<i class="fas fa-times"></i> ${cancelText}`;
+        
+        // Show modal
+        modal.classList.add('active');
+    });
+}
+
+function closeConfirmModal(result) {
+    const modal = document.getElementById('custom-confirm-modal');
+    if (modal) modal.classList.remove('active');
+    
+    if (confirmResolve) {
+        confirmResolve(result);
+        confirmResolve = null;
+    }
+}
+
+function initConfirmModal() {
+    const modal = document.getElementById('custom-confirm-modal');
+    if (!modal) return;
+    
+    const okBtn = document.getElementById('confirm-ok-btn');
+    const cancelBtn = document.getElementById('confirm-cancel-btn');
+    const overlay = modal.querySelector('.modal-overlay');
+    
+    okBtn.addEventListener('click', () => closeConfirmModal(true));
+    cancelBtn.addEventListener('click', () => closeConfirmModal(false));
+    overlay.addEventListener('click', () => closeConfirmModal(false));
+    
+    // ESC key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeConfirmModal(false);
+        }
+    });
+}
+
 async function confirmAutoReplyDraft(token) {
-    if (!confirm('Bạn có chắc muốn gửi email này?')) return;
+    const confirmed = await showConfirmModal({
+        title: 'Gửi Email',
+        message: 'Bạn có chắc muốn gửi email phản hồi này?',
+        type: 'info',
+        confirmText: 'Gửi ngay',
+        confirmClass: 'btn-primary'
+    });
+    if (!confirmed) return;
     
     try {
         const response = await authFetch(`${API_BASE}/api/auto-reply/confirm/${token}`, {
@@ -3927,7 +4024,14 @@ async function confirmAutoReplyDraft(token) {
 }
 
 async function rejectAutoReplyDraft(token) {
-    if (!confirm('Bạn có chắc muốn từ chối email này?')) return;
+    const confirmed = await showConfirmModal({
+        title: 'Từ chối Email',
+        message: 'Bạn có chắc muốn từ chối email phản hồi này?',
+        type: 'warning',
+        confirmText: 'Từ chối',
+        confirmClass: 'btn-warning'
+    });
+    if (!confirmed) return;
     
     try {
         const response = await authFetch(`${API_BASE}/api/auto-reply/reject/${token}`, {
@@ -4080,7 +4184,14 @@ function initDraftDetailModal() {
 }
 
 async function deleteAutoReplyDraft(draftId) {
-    if (!confirm('Bạn có chắc muốn xóa draft này?')) return;
+    const confirmed = await showConfirmModal({
+        title: 'Xóa Draft',
+        message: 'Bạn có chắc muốn xóa draft này?',
+        type: 'danger',
+        confirmText: 'Xóa',
+        confirmClass: 'btn-danger'
+    });
+    if (!confirmed) return;
     
     try {
         const response = await authFetch(`${API_BASE}/api/auto-reply/drafts/${draftId}`, {
@@ -4100,7 +4211,15 @@ async function deleteAutoReplyDraft(draftId) {
 }
 
 async function deleteAllAutoReplyDrafts() {
-    if (!confirm('Bạn có chắc muốn xóa TẤT CẢ lịch sử trả lời tự động?\n\nHành động này không thể hoàn tác!')) return;
+    const confirmed = await showConfirmModal({
+        title: 'Xóa tất cả',
+        message: 'Bạn có chắc muốn xóa TẤT CẢ lịch sử trả lời tự động?',
+        submessage: 'Hành động này không thể hoàn tác!',
+        type: 'danger',
+        confirmText: 'Xóa tất cả',
+        confirmClass: 'btn-danger'
+    });
+    if (!confirmed) return;
     
     try {
         const response = await authFetch(`${API_BASE}/api/auto-reply/drafts`, {
@@ -4139,6 +4258,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initAutoReplySettings();
     initDraftFilters();
     initDraftDetailModal();
+    initConfirmModal();
     
     // Load drafts when auto-reply options are visible
     setTimeout(() => {
