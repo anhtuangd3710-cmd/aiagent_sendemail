@@ -3632,12 +3632,18 @@ function showConfirmDialog(title, message, type = 'warning') {
 function initAutoReplySettings() {
     const enabledCheckbox = document.getElementById('auto-reply-enabled');
     const optionsDiv = document.getElementById('auto-reply-options');
+    const statusText = document.getElementById('auto-reply-status');
     const businessHoursCheckbox = document.getElementById('auto-reply-business-hours');
     const businessHoursConfig = document.getElementById('business-hours-config');
     
-    if (enabledCheckbox && optionsDiv) {
+    if (enabledCheckbox) {
         enabledCheckbox.addEventListener('change', () => {
-            optionsDiv.style.display = enabledCheckbox.checked ? 'block' : 'none';
+            if (optionsDiv) {
+                optionsDiv.style.display = enabledCheckbox.checked ? 'block' : 'none';
+            }
+            if (statusText) {
+                statusText.textContent = enabledCheckbox.checked ? 'Đang bật' : 'Đang tắt';
+            }
         });
     }
     
@@ -3661,11 +3667,15 @@ async function loadAutoReplySettings() {
             
             const enabledCheckbox = document.getElementById('auto-reply-enabled');
             const optionsDiv = document.getElementById('auto-reply-options');
+            const statusText = document.getElementById('auto-reply-status');
             
             if (enabledCheckbox) {
                 enabledCheckbox.checked = s.enabled || false;
                 if (optionsDiv) {
                     optionsDiv.style.display = s.enabled ? 'block' : 'none';
+                }
+                if (statusText) {
+                    statusText.textContent = s.enabled ? 'Đang bật' : 'Đang tắt';
                 }
             }
             

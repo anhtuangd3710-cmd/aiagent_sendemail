@@ -814,79 +814,159 @@
                     </div>
 
                     <!-- Auto Reply Settings -->
-                    <div class="card">
+                    <div class="card auto-reply-card">
                         <div class="card-header">
                             <h2><i class="fas fa-robot"></i> Trả lời tự động bằng AI</h2>
+                            <span class="beta-badge">Beta</span>
                         </div>
                         <div class="card-body">
-                            <div class="alert alert-info">
-                                <i class="fas fa-magic"></i>
-                                <div class="alert-content">
-                                    <strong>Tính năng mới!</strong> AI sẽ tự động phân tích email phản hồi và soạn trả lời. 
-                                    Email sẽ chỉ được gửi sau khi bạn xác nhận qua link trong email thông báo.
+                            <!-- Feature Introduction -->
+                            <div class="auto-reply-intro">
+                                <div class="intro-icon">
+                                    <i class="fas fa-magic"></i>
+                                </div>
+                                <div class="intro-content">
+                                    <h4>Tính năng thông minh</h4>
+                                    <p>AI sẽ tự động phân tích email phản hồi, đánh giá nội dung và soạn trả lời phù hợp. 
+                                    Bạn sẽ nhận được email xác nhận trước khi gửi đi.</p>
                                 </div>
                             </div>
                             
-                            <div class="form-group">
-                                <label class="toggle-switch-label">
-                                    <input type="checkbox" id="auto-reply-enabled" class="toggle-switch">
-                                    <span class="toggle-slider"></span>
-                                    <span class="toggle-text">Bật trả lời tự động</span>
+                            <!-- Main Toggle -->
+                            <div class="auto-reply-toggle-wrapper">
+                                <div class="toggle-info">
+                                    <div class="toggle-icon">
+                                        <i class="fas fa-power-off"></i>
+                                    </div>
+                                    <div class="toggle-details">
+                                        <span class="toggle-title">Bật trả lời tự động</span>
+                                        <span class="toggle-status" id="auto-reply-status">Đang tắt</span>
+                                    </div>
+                                </div>
+                                <label class="modern-toggle">
+                                    <input type="checkbox" id="auto-reply-enabled">
+                                    <span class="toggle-track">
+                                        <span class="toggle-thumb"></span>
+                                    </span>
                                 </label>
                             </div>
                             
+                            <!-- Options Panel -->
                             <div class="auto-reply-options" id="auto-reply-options" style="display: none;">
-                                <div class="form-group">
-                                    <label class="toggle-switch-label">
-                                        <input type="checkbox" id="auto-reply-require-confirmation" class="toggle-switch" checked>
-                                        <span class="toggle-slider"></span>
-                                        <span class="toggle-text">Yêu cầu xác nhận qua email trước khi gửi</span>
-                                    </label>
-                                    <small class="text-muted">Nếu tắt, email sẽ được gửi tự động khi AI có độ tin cậy cao</small>
-                                </div>
-                                
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="auto-reply-threshold">Ngưỡng tự động gửi (0.0 - 1.0)</label>
-                                        <input type="number" id="auto-reply-threshold" min="0" max="1" step="0.05" value="0.9" placeholder="0.9">
-                                        <small class="text-muted">Chỉ áp dụng khi tắt xác nhận. Email sẽ tự động gửi nếu AI có độ tin cậy ≥ ngưỡng này</small>
+                                <!-- Confirmation Setting -->
+                                <div class="option-card">
+                                    <div class="option-header">
+                                        <i class="fas fa-envelope-open-text"></i>
+                                        <span>Xác nhận trước khi gửi</span>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="auto-reply-timeout">Thời gian xác nhận (giờ)</label>
-                                        <input type="number" id="auto-reply-timeout" min="1" max="168" value="24" placeholder="24">
-                                        <small class="text-muted">Link xác nhận sẽ hết hạn sau thời gian này</small>
+                                    <div class="option-body">
+                                        <label class="modern-toggle small">
+                                            <input type="checkbox" id="auto-reply-require-confirmation" checked>
+                                            <span class="toggle-track">
+                                                <span class="toggle-thumb"></span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                    <p class="option-desc">Bạn sẽ nhận email xác nhận với nội dung draft trước khi gửi</p>
+                                </div>
+                                
+                                <!-- Threshold & Timeout -->
+                                <div class="option-row">
+                                    <div class="option-card small">
+                                        <div class="option-header">
+                                            <i class="fas fa-chart-line"></i>
+                                            <span>Ngưỡng tin cậy</span>
+                                        </div>
+                                        <div class="option-body">
+                                            <div class="input-with-suffix">
+                                                <input type="number" id="auto-reply-threshold" min="0" max="1" step="0.05" value="0.9">
+                                                <span class="input-suffix">%</span>
+                                            </div>
+                                        </div>
+                                        <p class="option-desc">Tự động gửi nếu AI tin cậy ≥ ngưỡng này (khi tắt xác nhận)</p>
+                                    </div>
+                                    
+                                    <div class="option-card small">
+                                        <div class="option-header">
+                                            <i class="fas fa-clock"></i>
+                                            <span>Hết hạn xác nhận</span>
+                                        </div>
+                                        <div class="option-body">
+                                            <div class="input-with-suffix">
+                                                <input type="number" id="auto-reply-timeout" min="1" max="168" value="24">
+                                                <span class="input-suffix">giờ</span>
+                                            </div>
+                                        </div>
+                                        <p class="option-desc">Link xác nhận sẽ hết hạn sau khoảng thời gian này</p>
                                     </div>
                                 </div>
                                 
-                                <div class="form-group">
-                                    <label for="auto-reply-languages">Ngôn ngữ trả lời</label>
-                                    <input type="text" id="auto-reply-languages" value="vi,en" placeholder="vi,en,ja">
-                                    <small class="text-muted">Các ngôn ngữ AI có thể sử dụng, cách nhau bằng dấu phẩy</small>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label for="auto-reply-exclude">Từ khóa loại trừ</label>
-                                    <input type="text" id="auto-reply-exclude" placeholder="unsubscribe,spam,quảng cáo">
-                                    <small class="text-muted">Không trả lời email chứa các từ khóa này, cách nhau bằng dấu phẩy</small>
-                                </div>
-                                
-                                <div class="form-group">
-                                    <label class="toggle-switch-label">
-                                        <input type="checkbox" id="auto-reply-business-hours" class="toggle-switch">
-                                        <span class="toggle-slider"></span>
-                                        <span class="toggle-text">Chỉ trả lời trong giờ làm việc</span>
-                                    </label>
-                                </div>
-                                
-                                <div class="form-row business-hours-config" id="business-hours-config" style="display: none;">
-                                    <div class="form-group">
-                                        <label for="auto-reply-hours-start">Bắt đầu</label>
-                                        <input type="number" id="auto-reply-hours-start" min="0" max="23" value="9" placeholder="9">
+                                <!-- Language Setting -->
+                                <div class="option-card">
+                                    <div class="option-header">
+                                        <i class="fas fa-language"></i>
+                                        <span>Ngôn ngữ trả lời</span>
                                     </div>
-                                    <div class="form-group">
-                                        <label for="auto-reply-hours-end">Kết thúc</label>
-                                        <input type="number" id="auto-reply-hours-end" min="0" max="23" value="18" placeholder="18">
+                                    <div class="option-body">
+                                        <div class="language-tags">
+                                            <input type="text" id="auto-reply-languages" value="vi,en" placeholder="vi,en,ja,ko,zh">
+                                        </div>
                                     </div>
+                                    <p class="option-desc">Các ngôn ngữ AI có thể sử dụng khi soạn email (vi, en, ja, ko, zh, fr...)</p>
+                                </div>
+                                
+                                <!-- Exclude Keywords -->
+                                <div class="option-card">
+                                    <div class="option-header">
+                                        <i class="fas fa-ban"></i>
+                                        <span>Từ khóa loại trừ</span>
+                                    </div>
+                                    <div class="option-body">
+                                        <input type="text" id="auto-reply-exclude" placeholder="unsubscribe, spam, quảng cáo, no-reply">
+                                    </div>
+                                    <p class="option-desc">Không trả lời email chứa các từ khóa này (cách nhau bằng dấu phẩy)</p>
+                                </div>
+                                
+                                <!-- Business Hours -->
+                                <div class="option-card">
+                                    <div class="option-header">
+                                        <i class="fas fa-business-time"></i>
+                                        <span>Chỉ trong giờ làm việc</span>
+                                    </div>
+                                    <div class="option-body">
+                                        <label class="modern-toggle small">
+                                            <input type="checkbox" id="auto-reply-business-hours">
+                                            <span class="toggle-track">
+                                                <span class="toggle-thumb"></span>
+                                            </span>
+                                        </label>
+                                    </div>
+                                    
+                                    <div class="business-hours-inputs" id="business-hours-config" style="display: none;">
+                                        <div class="hours-input">
+                                            <label>Từ</label>
+                                            <select id="auto-reply-hours-start">
+                                                <option value="6">06:00</option>
+                                                <option value="7">07:00</option>
+                                                <option value="8">08:00</option>
+                                                <option value="9" selected>09:00</option>
+                                                <option value="10">10:00</option>
+                                            </select>
+                                        </div>
+                                        <span class="hours-separator">—</span>
+                                        <div class="hours-input">
+                                            <label>Đến</label>
+                                            <select id="auto-reply-hours-end">
+                                                <option value="17">17:00</option>
+                                                <option value="18" selected>18:00</option>
+                                                <option value="19">19:00</option>
+                                                <option value="20">20:00</option>
+                                                <option value="21">21:00</option>
+                                                <option value="22">22:00</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <p class="option-desc">Email ngoài giờ làm việc sẽ được xử lý vào ngày hôm sau</p>
                                 </div>
                             </div>
                         </div>
