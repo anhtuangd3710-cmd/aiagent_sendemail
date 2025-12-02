@@ -16,9 +16,7 @@ from datetime import datetime
 from services.email_service import EmailService
 from services.email_monitor import EmailMonitor, ManualResponseProcessor
 from services.auth_service import AuthService, login_required, admin_required
-from services.firebase_auth_service import FirebaseAuthService, firebase_login_required, firebase_email_verified_required, get_firebase_auth_service
 from config.settings import SENDER_EMAIL, AI_PROVIDER, AUTO_START_MONITOR
-from config.firebase_config import FIREBASE_CONFIG, is_firebase_configured
 
 # Import Database Service based on DATABASE_URL
 DATABASE_URL = os.getenv('DATABASE_URL')
@@ -447,192 +445,6 @@ def get_all_users():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
-# ==================== Firebase Authentication API ====================
-
-@app.route('/api/firebase/config', methods=['GET'])
-def get_firebase_config():
-    """Get Firebase configuration for client-side initialization"""
-    try:
-        if is_firebase_configured():
-            return jsonify({
-                "success": True,
-                "config": FIREBASE_CONFIG
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "error": "Firebase chưa được cấu hình"
-            })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/api/firebase/verify', methods=['POST'])
-def verify_firebase_token():
-    """Verify Firebase ID token from client"""
-    try:
-        data = request.json
-        id_token = data.get('idToken')
-        
-        if not id_token:
-            return jsonify({
-                "success": False,
-                "error": "Token không được cung cấp"
-            }), 400
-        
-        # Get Firebase service
-        firebase_service = get_firebase_auth_service(database)
-        
-        if not firebase_service.is_available():
-            return jsonify({
-                "success": False,
-                "error": "Firebase chưa được cấu hình trên server"
-            }), 500
-        
-        # Verify token
-        success, user_data, error = firebase_service.verify_id_token(id_token)
-        
-        if not success:
-            return jsonify({
-                "success": False,
-                "error": error
-            }), 401
-        
-        # Get or create user in local database
-        local_user = firebase_service.get_or_create_user(user_data)
-        
-        return jsonify({
-            "success": True,
-            "user": local_user,
-            "firebase_user": user_data
-        })
-        
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/api/firebase/user', methods=['GET'])
-@firebase_login_required
-def get_firebase_user():
-    """Get current Firebase user info"""
-    try:
-        return jsonify({
-            "success": True,
-            "user": request.firebase_user
-        })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/api/firebase/send-verification', methods=['POST'])
-def send_verification_email():
-    """Send email verification link (server-side generation)"""
-    try:
-        data = request.json
-        email = data.get('email')
-        
-        if not email:
-            return jsonify({
-                "success": False,
-                "error": "Email không được cung cấp"
-            }), 400
-        
-        firebase_service = get_firebase_auth_service(database)
-        
-        if not firebase_service.is_available():
-            return jsonify({
-                "success": False,
-                "error": "Firebase chưa được cấu hình"
-            }), 500
-        
-        success, link = firebase_service.send_email_verification(email)
-        
-        if success:
-            # In production, send this link via your email service
-            return jsonify({
-                "success": True,
-                "message": "Email xác thực đã được gửi"
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "error": link  # Contains error message
-            }), 400
-            
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/api/firebase/reset-password', methods=['POST'])
-def firebase_reset_password():
-    """Send password reset email"""
-    try:
-        data = request.json
-        email = data.get('email')
-        
-        if not email:
-            return jsonify({
-                "success": False,
-                "error": "Email không được cung cấp"
-            }), 400
-        
-        firebase_service = get_firebase_auth_service(database)
-        
-        if not firebase_service.is_available():
-            return jsonify({
-                "success": False,
-                "error": "Firebase chưa được cấu hình"
-            }), 500
-        
-        success, result = firebase_service.send_password_reset(email)
-        
-        if success:
-            return jsonify({
-                "success": True,
-                "message": "Email đặt lại mật khẩu đã được gửi"
-            })
-        else:
-            return jsonify({
-                "success": False,
-                "error": result
-            }), 400
-            
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
-@app.route('/api/firebase/check-verification', methods=['POST'])
-def check_email_verification():
-    """Check if user's email is verified"""
-    try:
-        data = request.json
-        uid = data.get('uid')
-        
-        if not uid:
-            return jsonify({
-                "success": False,
-                "error": "User ID không được cung cấp"
-            }), 400
-        
-        firebase_service = get_firebase_auth_service(database)
-        
-        if not firebase_service.is_available():
-            return jsonify({
-                "success": False,
-                "error": "Firebase chưa được cấu hình"
-            }), 500
-        
-        is_verified = firebase_service.check_email_verified(uid)
-        
-        return jsonify({
-            "success": True,
-            "email_verified": is_verified
-        })
-        
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 500
-
-
 # ==================== User Settings API ====================
 
 @app.route('/api/user/settings', methods=['GET'])
@@ -693,9 +505,7 @@ def index():
 
 @app.route('/login')
 def login_page():
-    """Login page - uses Firebase if configured, otherwise legacy auth"""
-    if is_firebase_configured():
-        return render_template('login_firebase.html')
+    """Login page"""
     return render_template('login.html')
 
 
