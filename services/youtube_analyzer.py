@@ -371,21 +371,32 @@ Lưu ý:
 **15 VIDEO GẦN NHẤT:**
 {json.dumps(video_data, ensure_ascii=False, indent=2)}
 
-**KIẾN THỨC RPM THỰC TẾ (tham khảo):**
-- Kênh Việt Nam thuần: $0.30 - $0.80 - $1.20 RPM
-- Kênh VN có 20-40% khán giả quốc tế: $0.80 - $1.50 - $2.50 RPM
-- Kênh VN chủ yếu khán giả US/UK: $2.00 - $4.00 - $6.00 RPM
-- Finance/Business niche: +50-100% so với entertainment
-- Gaming/Music: thường thấp hơn 20-30%
-- Video dài (>8 phút) có mid-roll ads: +30-50% RPM
-- Video ngắn/Shorts: RPM rất thấp ~$0.05-$0.20
+**KIẾN THỨC RPM THỰC TẾ 2024-2025 (BẮT BUỘC TUÂN THEO):**
+
+⚠️ QUAN TRỌNG: RPM là số tiền THỰC NHẬN sau khi YouTube lấy 45%. Đây là data thực tế từ creators:
+
+**KÊNH VIỆT NAM (nội dung tiếng Việt, khán giả VN):**
+- Entertainment/Vlog/Gaming: $0.30 - $0.50 - $0.80 RPM
+- Education/Tech: $0.40 - $0.65 - $1.00 RPM  
+- Finance/Business: $0.50 - $0.80 - $1.20 RPM
+- Kids content: $0.10 - $0.25 - $0.40 RPM
+- Music/Covers: $0.15 - $0.30 - $0.50 RPM
+
+**KÊNH VN CÓ KHÁN GIẢ QUỐC TẾ (tiếng Anh/đa ngôn ngữ):**
+- 20-40% international: $0.60 - $1.00 - $1.50 RPM
+- 40-60% international: $1.00 - $1.50 - $2.50 RPM
+- >60% international: $1.50 - $2.50 - $4.00 RPM
+
+**THAM CHIẾU THỰC TẾ:**
+- 2.6M views/tháng kênh VN thuần = ~$2,000 → RPM ~$0.77
+- 1.1M views/tháng kênh VN thuần = ~$800-1,000 → RPM ~$0.73-0.91
+- 500K views/tháng kênh VN thuần = ~$350-500 → RPM ~$0.70-1.00
 
 **YÊU CẦU:** 
-Dựa trên TẤT CẢ dữ liệu trên, hãy:
 1. Xác định niche của kênh
-2. Ước tính % khán giả quốc tế (dựa trên ngôn ngữ video, engagement pattern)
-3. Tính RPM phù hợp (KHÔNG dùng CPM)
-4. Tính thu nhập ước tính
+2. Xác định % khán giả quốc tế (xem ngôn ngữ title video, description)
+3. Tính RPM PHÙ HỢP với bảng trên - KHÔNG được vượt quá giới hạn
+4. Kênh VN thuần KHÔNG BAO GIỜ có RPM > $1.50
 
 **TRẢ VỀ JSON (CHỈ JSON, KHÔNG CÓ TEXT KHÁC):**
 {{
@@ -420,12 +431,33 @@ Dựa trên TẤT CẢ dữ liệu trên, hãy:
             if json_match:
                 ai_result = json.loads(json_match.group())
                 
-                # Validate and sanitize results
-                rpm_low = max(0.05, min(10.0, float(ai_result.get('rpm_low', 0.5))))
-                rpm_avg = max(rpm_low, min(15.0, float(ai_result.get('rpm_avg', 0.8))))
-                rpm_high = max(rpm_avg, min(20.0, float(ai_result.get('rpm_high', 1.2))))
+                # Validate and sanitize results - STRICT limits for Vietnam channels
+                audience_region = ai_result.get('audience_region', 'vietnam')
+                international_pct = int(ai_result.get('international_percent', 0))
                 
-                # Recalculate earnings based on RPM
+                # Set RPM limits based on audience
+                if audience_region == 'vietnam' or international_pct < 20:
+                    # Pure Vietnam audience - strict limits
+                    max_rpm_low = 0.80
+                    max_rpm_avg = 1.20
+                    max_rpm_high = 1.80
+                elif international_pct < 50:
+                    # Mixed audience
+                    max_rpm_low = 1.50
+                    max_rpm_avg = 2.50
+                    max_rpm_high = 4.00
+                else:
+                    # Mostly international
+                    max_rpm_low = 3.00
+                    max_rpm_avg = 5.00
+                    max_rpm_high = 8.00
+                
+                # Apply limits
+                rpm_low = max(0.10, min(max_rpm_low, float(ai_result.get('rpm_low', 0.5))))
+                rpm_avg = max(rpm_low, min(max_rpm_avg, float(ai_result.get('rpm_avg', 0.8))))
+                rpm_high = max(rpm_avg, min(max_rpm_high, float(ai_result.get('rpm_high', 1.2))))
+                
+                # Recalculate earnings based on validated RPM
                 est_views = int(ai_result.get('estimated_monthly_views', estimated_monthly))
                 
                 result = {
