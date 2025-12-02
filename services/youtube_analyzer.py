@@ -65,22 +65,22 @@ class YouTubeAnalyzer:
     }
     
     # Typical RPM ranges by region (USD per 1000 total views - what creator gets)
-    # This is the most accurate metric for earnings calculation
-    # Base RPM - niche multiplier sẽ tăng thêm cho các niche cao
+    # REALISTIC RPM based on actual creator reports 2024-2025
+    # Kênh VN 2-3M views/tháng kiếm $2-3K → RPM ~$0.80-1.00
     ACTUAL_RPM = {
-        'vietnam': {'low': 0.05, 'avg': 0.30, 'high': 0.80},      # Base VN: $0.05-$0.80, niche tốt có thể $1-2
-        'india': {'low': 0.03, 'avg': 0.15, 'high': 0.50},
-        'indonesia': {'low': 0.05, 'avg': 0.20, 'high': 0.60},
-        'philippines': {'low': 0.03, 'avg': 0.15, 'high': 0.50},
-        'thailand': {'low': 0.05, 'avg': 0.25, 'high': 0.70},
-        'brazil': {'low': 0.10, 'avg': 0.40, 'high': 1.00},
-        'japan': {'low': 0.50, 'avg': 1.50, 'high': 4.00},
-        'germany': {'low': 0.80, 'avg': 2.00, 'high': 5.00},
-        'uk': {'low': 1.00, 'avg': 2.50, 'high': 6.00},
-        'us': {'low': 1.50, 'avg': 3.50, 'high': 8.00},
-        'canada': {'low': 1.00, 'avg': 2.50, 'high': 6.00},
-        'australia': {'low': 1.00, 'avg': 2.50, 'high': 6.00},
-        'international': {'low': 0.20, 'avg': 0.80, 'high': 2.00},
+        'vietnam': {'low': 0.50, 'avg': 0.80, 'high': 1.50},      # VN: $0.50-$1.50 RPM
+        'india': {'low': 0.30, 'avg': 0.60, 'high': 1.20},
+        'indonesia': {'low': 0.40, 'avg': 0.70, 'high': 1.30},
+        'philippines': {'low': 0.30, 'avg': 0.60, 'high': 1.20},
+        'thailand': {'low': 0.40, 'avg': 0.80, 'high': 1.50},
+        'brazil': {'low': 0.50, 'avg': 1.00, 'high': 2.00},
+        'japan': {'low': 1.50, 'avg': 3.00, 'high': 6.00},
+        'germany': {'low': 2.00, 'avg': 4.00, 'high': 8.00},
+        'uk': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
+        'us': {'low': 3.00, 'avg': 6.00, 'high': 12.00},
+        'canada': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
+        'australia': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
+        'international': {'low': 0.80, 'avg': 1.50, 'high': 3.00},
     }
     
     # Niche keywords for detection
@@ -936,17 +936,16 @@ Lưu ý:
     
     def calculate_monthly_views(self, videos: List[Dict], total_views: int, video_count: int, channel_created: str = '') -> Dict:
         """
-        Calculate estimated monthly views based on LIFETIME AVERAGE.
+        Calculate estimated monthly views.
         
-        This is the most accurate method because:
-        - YouTube API only gives TOTAL views, not views per period
-        - Lifetime average = Total Views / Channel Age in months
-        - This accounts for both new videos AND long-tail views from old videos
+        Priority:
+        1. Views from videos uploaded in last 30 days (most accurate)
+        2. Lifetime average as fallback
         """
         now = datetime.now()
         
         result = {
-            'calculation_method': 'lifetime_average',
+            'calculation_method': '',
             'videos_analyzed': len(videos) if videos else 0,
             'videos_last_30_days': 0,
             'avg_views_per_video': 0,
@@ -976,19 +975,14 @@ Lưu ý:
         
         result['channel_age_months'] = channel_age_months
         
-        # PRIMARY METHOD: Lifetime average (most accurate)
-        # Monthly views = Total views / Channel age in months
+        # Calculate lifetime average (for reference)
         if total_views > 0 and channel_age_months > 0:
-            lifetime_avg = int(total_views / channel_age_months)
-            result['avg_monthly_views_lifetime'] = lifetime_avg
-            result['estimated_monthly_views'] = lifetime_avg
-            result['calculation_method'] = 'lifetime_average'
+            result['avg_monthly_views_lifetime'] = int(total_views / channel_age_months)
         
-        # Count videos in last 30 days (for display only)
+        # PRIMARY: Count videos and views in last 30 days
         if videos:
             thirty_days_ago = now - timedelta(days=30)
-            videos_last_30 = 0
-            total_recent_views = 0
+            videos_last_30 = []
             
             for video in videos:
                 pub_date = video.get('published_at', '')
@@ -996,35 +990,39 @@ Lưu ý:
                     try:
                         video_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00')).replace(tzinfo=None)
                         if video_date >= thirty_days_ago:
-                            videos_last_30 += 1
-                            total_recent_views += video.get('view_count', 0)
+                            videos_last_30.append(video)
                     except:
                         pass
             
-            result['videos_last_30_days'] = videos_last_30
+            result['videos_last_30_days'] = len(videos_last_30)
             
-            # Calculate average views per recent video
-            if videos_last_30 > 0:
-                result['avg_views_per_video'] = int(total_recent_views / videos_last_30)
-            elif videos:
-                total_analyzed = sum(v.get('view_count', 0) for v in videos)
-                result['avg_views_per_video'] = int(total_analyzed / len(videos))
+            if videos_last_30:
+                # Use views from recent videos
+                total_recent_views = sum(v.get('view_count', 0) for v in videos_last_30)
+                result['avg_views_per_video'] = int(total_recent_views / len(videos_last_30))
+                result['estimated_monthly_views'] = total_recent_views
+                result['calculation_method'] = 'recent_videos'
+            else:
+                # No recent videos, use lifetime average
+                result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
+                result['calculation_method'] = 'lifetime_average'
+                if videos:
+                    total_analyzed = sum(v.get('view_count', 0) for v in videos)
+                    result['avg_views_per_video'] = int(total_analyzed / len(videos))
+        else:
+            # No video data, use lifetime average
+            result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
+            result['calculation_method'] = 'lifetime_average'
         
-        # Fallback if no lifetime data
+        # Fallback
         if result['estimated_monthly_views'] == 0:
             if video_count > 0 and total_views > 0:
                 avg_per_video = total_views / video_count
                 result['avg_views_per_video'] = int(avg_per_video)
-                # Estimate 4-8 videos per month typical
-                result['estimated_monthly_views'] = int(avg_per_video * 6)
-                result['calculation_method'] = 'video_average'
+                result['estimated_monthly_views'] = int(avg_per_video * 4)
+                result['calculation_method'] = 'fallback'
         
         return result
-        # Calculate average views per video
-        if videos_in_period:
-            result['avg_views_per_video'] = int(new_video_views / len(videos_in_period))
-        elif videos:
-            total_views_analyzed = sum(v.get('view_count', 0) for v in videos)
             result['avg_views_per_video'] = int(total_views_analyzed / len(videos))
         
         return result
@@ -1644,22 +1642,22 @@ Lưu ý:
                 'high': base_rpm['high']
             }
         
-        # Niche multiplier - Finance/Tech cao hơn nhưng không quá 2x
-        # Kênh tài chính VN: base $0.30 × 2.0 = $0.60 avg, có thể lên $1-2 với video dài
+        # Niche multiplier - giảm nhẹ, không quá 1.5x vì RPM base đã realistic
+        # Đa số kênh VN không có sự khác biệt lớn về niche
         niche_multipliers = {
-            'finance': 2.0,      # Finance/crypto = cao nhất
-            'business': 1.7,     # Kinh doanh/marketing
-            'tech': 1.5,         # Tech review
-            'education': 1.3,    # Giáo dục
-            'health': 1.3,       # Sức khỏe
-            'travel': 1.2,       # Du lịch
-            'news': 1.1,         # Tin tức
-            'lifestyle': 1.1,    # Lifestyle
+            'finance': 1.5,      # Finance/crypto = cao nhất nhưng chỉ +50%
+            'business': 1.3,     # Kinh doanh
+            'tech': 1.3,         # Tech review
+            'education': 1.2,    # Giáo dục
+            'health': 1.2,       # Sức khỏe
+            'travel': 1.1,       # Du lịch
+            'news': 1.0,         # Tin tức = baseline
+            'lifestyle': 1.0,    # Lifestyle
             'food': 1.0,         # Ẩm thực = baseline
-            'gaming': 0.85,      # Gaming = thấp hơn
-            'entertainment': 0.8, # Giải trí
-            'music': 0.7,        # Music = thấp (skip ads nhiều)
-            'kids': 0.4,         # Hạn chế ads
+            'gaming': 0.9,       # Gaming
+            'entertainment': 0.9, # Giải trí
+            'music': 0.8,        # Music
+            'kids': 0.5,         # Hạn chế ads
             'default': 1.0
         }
         
