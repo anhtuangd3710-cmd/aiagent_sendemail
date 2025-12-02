@@ -1008,23 +1008,41 @@ Lưu ý:
         return ''
     
     def calculate_monthly_views(self, videos: List[Dict], total_views: int, video_count: int, channel_created: str = '') -> Dict:
-        """Calculate estimated monthly views based on recent video performance"""
+        """
+        Calculate estimated monthly views based on recent video performance.
+        
+        IMPORTANT: YouTube API only gives TOTAL views per video, not views per time period.
+        So we need to estimate monthly views based on:
+        1. Videos uploaded in the payment period (ngày 3 → ngày 3)
+        2. View decay formula for older videos
+        """
+        from dateutil.relativedelta import relativedelta
+        
         now = datetime.now()
-        current_month = now.month
-        current_year = now.year
         
         result = {
             'calculation_method': '',
             'videos_analyzed': 0,
-            'videos_last_30_days': 0,
-            'views_last_30_days': 0,
+            'videos_in_period': 0,
+            'new_video_views': 0,
+            'estimated_old_video_views': 0,
             'avg_views_per_video': 0,
             'estimated_monthly_views': 0,
-            'views_this_month': 0,
-            'days_in_month': 30,
             'channel_age_months': 0,
             'avg_monthly_views_lifetime': 0,
+            'payment_period': '',
         }
+        
+        # Get payment period dates
+        current_day = now.day
+        if current_day < 3:
+            end_date = now.replace(day=3) - relativedelta(months=1)
+            start_date = end_date - relativedelta(months=1)
+        else:
+            end_date = now.replace(day=3)
+            start_date = end_date - relativedelta(months=1)
+        
+        result['payment_period'] = f"{start_date.strftime('%d/%m')} - {end_date.strftime('%d/%m/%Y')}"
         
         # Calculate channel age
         if channel_created:
@@ -1032,7 +1050,6 @@ Lưu ý:
                 if 'T' in channel_created:
                     created_date = datetime.fromisoformat(channel_created.replace('Z', '+00:00'))
                 else:
-                    # Try parsing different formats
                     for fmt in ['%Y-%m-%d', '%b %d, %Y', '%d %b %Y']:
                         try:
                             created_date = datetime.strptime(channel_created, fmt)
@@ -1049,72 +1066,117 @@ Lưu ý:
         if result['channel_age_months'] > 0 and total_views > 0:
             result['avg_monthly_views_lifetime'] = int(total_views / result['channel_age_months'])
         
-        # If we have recent videos with data
-        if videos:
-            result['videos_analyzed'] = len(videos)
-            
-            # Filter videos from last 30 days
-            thirty_days_ago = now - timedelta(days=30)
-            recent_videos = []
-            
-            for video in videos:
-                pub_date = video.get('published_at', '')
-                if pub_date:
-                    try:
-                        video_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00')).replace(tzinfo=None)
-                        if video_date >= thirty_days_ago:
-                            recent_videos.append(video)
-                    except:
-                        pass
-            
-            result['videos_last_30_days'] = len(recent_videos)
-            
-            if recent_videos:
-                # Calculate views from videos in last 30 days
-                total_recent_views = sum(v.get('view_count', 0) for v in recent_videos)
-                result['views_last_30_days'] = total_recent_views
-                result['avg_views_per_video'] = int(total_recent_views / len(recent_videos))
-                result['estimated_monthly_views'] = total_recent_views
-                result['calculation_method'] = 'recent_30_days'
-            else:
-                # Use all analyzed videos
-                total_analyzed_views = sum(v.get('view_count', 0) for v in videos)
-                result['avg_views_per_video'] = int(total_analyzed_views / len(videos))
-                
-                # Estimate upload frequency
-                if len(videos) >= 2:
-                    # Get date range of videos
-                    dates = []
-                    for v in videos:
-                        pub = v.get('published_at', '')
-                        if pub:
-                            try:
-                                dates.append(datetime.fromisoformat(pub.replace('Z', '+00:00')).replace(tzinfo=None))
-                            except:
-                                pass
-                    
-                    if len(dates) >= 2:
-                        date_range = (max(dates) - min(dates)).days
-                        if date_range > 0:
-                            videos_per_month = (len(videos) / date_range) * 30
-                            result['estimated_monthly_views'] = int(result['avg_views_per_video'] * videos_per_month)
-                            result['calculation_method'] = 'video_frequency'
-                
-                if result['estimated_monthly_views'] == 0:
-                    # Fallback: assume 4 videos per month
-                    result['estimated_monthly_views'] = result['avg_views_per_video'] * 4
-                    result['calculation_method'] = 'avg_estimate'
-        else:
-            # No video data, use total views / channel age
+        if not videos:
+            # No video data, use lifetime average
             if result['avg_monthly_views_lifetime'] > 0:
                 result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
                 result['calculation_method'] = 'lifetime_average'
             elif video_count > 0 and total_views > 0:
-                # Rough estimate
                 avg_per_video = total_views / video_count
                 result['avg_views_per_video'] = int(avg_per_video)
-                result['estimated_monthly_views'] = int(avg_per_video * 4)  # Assume 4 videos/month
+                result['estimated_monthly_views'] = int(avg_per_video * 4)
                 result['calculation_method'] = 'total_average'
+            return result
+        
+        result['videos_analyzed'] = len(videos)
+        
+        # Separate videos: in payment period vs older
+        videos_in_period = []
+        older_videos = []
+        
+        for video in videos:
+            pub_date = video.get('published_at', '')
+            if pub_date:
+                try:
+                    video_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                    video['parsed_date'] = video_date
+                    video['days_old'] = (now - video_date).days
+                    
+                    if video_date >= start_date:
+                        videos_in_period.append(video)
+                    else:
+                        older_videos.append(video)
+                except:
+                    pass
+        
+        result['videos_in_period'] = len(videos_in_period)
+        
+        # Method 1: Views from videos uploaded in payment period
+        # These are mostly accurate - video mới đăng thì views gần như là của tháng này
+        new_video_views = 0
+        for video in videos_in_period:
+            days_old = video.get('days_old', 1)
+            view_count = video.get('view_count', 0)
+            
+            if days_old <= 7:
+                # Video < 7 ngày: 100% views là của tháng này
+                new_video_views += view_count
+            elif days_old <= 14:
+                # Video 7-14 ngày: ~90% views là của tháng này
+                new_video_views += int(view_count * 0.9)
+            elif days_old <= 21:
+                # Video 14-21 ngày: ~80% views là của tháng này
+                new_video_views += int(view_count * 0.8)
+            else:
+                # Video 21-30 ngày: ~70% views là của tháng này
+                new_video_views += int(view_count * 0.7)
+        
+        result['new_video_views'] = new_video_views
+        
+        # Method 2: Estimate views from older videos (long-tail views)
+        # Older videos still get views but much less (typically 5-20% of their monthly average)
+        old_video_views = 0
+        if older_videos:
+            for video in older_videos:
+                view_count = video.get('view_count', 0)
+                days_old = video.get('days_old', 30)
+                
+                # Estimate monthly views based on total views and age
+                # Older videos get fewer views per month (decay)
+                if days_old > 0:
+                    # View decay: video càng cũ càng ít views/tháng
+                    months_old = days_old / 30
+                    if months_old <= 3:
+                        # 1-3 months old: ~15% of avg monthly views
+                        monthly_fraction = 0.15
+                    elif months_old <= 6:
+                        # 3-6 months: ~8% 
+                        monthly_fraction = 0.08
+                    elif months_old <= 12:
+                        # 6-12 months: ~4%
+                        monthly_fraction = 0.04
+                    else:
+                        # > 1 year: ~2%
+                        monthly_fraction = 0.02
+                    
+                    # Estimate views this month from this old video
+                    estimated_monthly = int((view_count / max(months_old, 1)) * monthly_fraction)
+                    old_video_views += estimated_monthly
+        
+        result['estimated_old_video_views'] = old_video_views
+        
+        # Total estimated monthly views
+        total_monthly = new_video_views + old_video_views
+        
+        # Sanity check: không quá 150% lifetime average (tránh overestimate)
+        if result['avg_monthly_views_lifetime'] > 0:
+            max_reasonable = int(result['avg_monthly_views_lifetime'] * 1.5)
+            if total_monthly > max_reasonable and result['channel_age_months'] > 6:
+                total_monthly = max_reasonable
+                result['calculation_method'] = 'capped_by_lifetime'
+            else:
+                result['calculation_method'] = 'period_analysis'
+        else:
+            result['calculation_method'] = 'period_analysis'
+        
+        result['estimated_monthly_views'] = total_monthly
+        
+        # Calculate average views per video
+        if videos_in_period:
+            result['avg_views_per_video'] = int(new_video_views / len(videos_in_period))
+        elif videos:
+            total_views_analyzed = sum(v.get('view_count', 0) for v in videos)
+            result['avg_views_per_video'] = int(total_views_analyzed / len(videos))
         
         return result
     
