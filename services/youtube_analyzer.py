@@ -65,22 +65,22 @@ class YouTubeAnalyzer:
     }
     
     # Typical RPM ranges by region (USD per 1000 total views - what creator gets)
-    # REALISTIC RPM based on actual creator reports 2024-2025
-    # Kênh VN 2-3M views/tháng kiếm $2-3K → RPM ~$0.80-1.00
+    # REALISTIC: Kênh VN 2.6M views kiếm $2K → RPM = $0.77
+    # Set avg là $0.60 vì còn có multiplier cho video dài/niche
     ACTUAL_RPM = {
-        'vietnam': {'low': 0.50, 'avg': 0.80, 'high': 1.50},      # VN: $0.50-$1.50 RPM
-        'india': {'low': 0.30, 'avg': 0.60, 'high': 1.20},
-        'indonesia': {'low': 0.40, 'avg': 0.70, 'high': 1.30},
-        'philippines': {'low': 0.30, 'avg': 0.60, 'high': 1.20},
-        'thailand': {'low': 0.40, 'avg': 0.80, 'high': 1.50},
-        'brazil': {'low': 0.50, 'avg': 1.00, 'high': 2.00},
-        'japan': {'low': 1.50, 'avg': 3.00, 'high': 6.00},
-        'germany': {'low': 2.00, 'avg': 4.00, 'high': 8.00},
-        'uk': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
-        'us': {'low': 3.00, 'avg': 6.00, 'high': 12.00},
-        'canada': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
-        'australia': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
-        'international': {'low': 0.80, 'avg': 1.50, 'high': 3.00},
+        'vietnam': {'low': 0.30, 'avg': 0.60, 'high': 1.00},      # VN: $0.30-$1.00 RPM
+        'india': {'low': 0.20, 'avg': 0.45, 'high': 0.80},
+        'indonesia': {'low': 0.25, 'avg': 0.50, 'high': 0.90},
+        'philippines': {'low': 0.20, 'avg': 0.45, 'high': 0.80},
+        'thailand': {'low': 0.25, 'avg': 0.55, 'high': 0.95},
+        'brazil': {'low': 0.35, 'avg': 0.70, 'high': 1.20},
+        'japan': {'low': 1.00, 'avg': 2.00, 'high': 4.00},
+        'germany': {'low': 1.50, 'avg': 3.00, 'high': 6.00},
+        'uk': {'low': 2.00, 'avg': 4.00, 'high': 8.00},
+        'us': {'low': 2.50, 'avg': 5.00, 'high': 10.00},
+        'canada': {'low': 2.00, 'avg': 4.00, 'high': 8.00},
+        'australia': {'low': 2.00, 'avg': 4.00, 'high': 8.00},
+        'international': {'low': 0.50, 'avg': 1.00, 'high': 2.00},
     }
     
     # Niche keywords for detection
@@ -1639,22 +1639,21 @@ Lưu ý:
                 'high': base_rpm['high']
             }
         
-        # Niche multiplier - giảm nhẹ, không quá 1.5x vì RPM base đã realistic
-        # Đa số kênh VN không có sự khác biệt lớn về niche
+        # Niche multiplier - rất nhỏ vì đa số kênh VN không khác biệt nhiều
         niche_multipliers = {
-            'finance': 1.5,      # Finance/crypto = cao nhất nhưng chỉ +50%
-            'business': 1.3,     # Kinh doanh
-            'tech': 1.3,         # Tech review
-            'education': 1.2,    # Giáo dục
-            'health': 1.2,       # Sức khỏe
-            'travel': 1.1,       # Du lịch
-            'news': 1.0,         # Tin tức = baseline
-            'lifestyle': 1.0,    # Lifestyle
-            'food': 1.0,         # Ẩm thực = baseline
-            'gaming': 0.9,       # Gaming
-            'entertainment': 0.9, # Giải trí
-            'music': 0.8,        # Music
-            'kids': 0.5,         # Hạn chế ads
+            'finance': 1.2,      # Finance = +20% max
+            'business': 1.15,
+            'tech': 1.15,
+            'education': 1.1,
+            'health': 1.1,
+            'travel': 1.05,
+            'news': 1.0,
+            'lifestyle': 1.0,
+            'food': 1.0,
+            'gaming': 0.95,
+            'entertainment': 0.95,
+            'music': 0.9,
+            'kids': 0.6,
             'default': 1.0
         }
         
@@ -1675,15 +1674,15 @@ Lưu ý:
         rpm['avg'] *= (1 + niche_effect)
         rpm['high'] *= (1 + niche_effect * 1.2)  # High estimate benefits more
         
-        # Video length bonus (8+ mins = mid-roll ads) - VERY IMPORTANT
+        # Video length bonus (8+ mins = mid-roll ads) - giảm xuống
         if avg_video_length_mins >= 20:
-            length_multiplier = 1.5  # +50% for long videos (multiple mid-rolls)
+            length_multiplier = 1.25  # +25% for long videos
         elif avg_video_length_mins >= 12:
-            length_multiplier = 1.4  # +40%
+            length_multiplier = 1.20  # +20%
         elif avg_video_length_mins >= 8:
-            length_multiplier = 1.3  # +30% for mid-roll eligible
+            length_multiplier = 1.15  # +15% for mid-roll eligible
         elif avg_video_length_mins >= 5:
-            length_multiplier = 1.1
+            length_multiplier = 1.05
         else:
             length_multiplier = 1.0  # Shorts/short videos - only pre-roll
         
