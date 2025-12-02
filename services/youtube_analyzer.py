@@ -947,7 +947,7 @@ Lưu ý:
             'calculation_method': '',
             'videos_analyzed': len(videos) if videos else 0,
             'videos_last_30_days': 0,
-            'views_30_days': 0,
+            'views_last_30_days': 0,
             'avg_views_per_video': 0,
             'estimated_monthly_views': 0,
             'channel_age_months': 0,
@@ -1003,8 +1003,8 @@ Lưu ý:
             # Calculate total views of recent videos (for display only)
             if videos_last_30:
                 total_recent_views = sum(v.get('view_count', 0) for v in videos_last_30)
-                result['views_30_days'] = total_recent_views
-                result['avg_views_per_video'] = int(total_recent_views / len(videos_last_30))
+                result['views_last_30_days'] = total_recent_views
+                result['avg_views_per_video'] = int(total_recent_views / len(videos_last_30)) if total_recent_views > 0 else 0
             elif videos:
                 total_analyzed = sum(v.get('view_count', 0) for v in videos)
                 result['avg_views_per_video'] = int(total_analyzed / len(videos))
@@ -1982,25 +1982,11 @@ Lưu ý:
         current_month = datetime.now().month
         current_year = datetime.now().year
         
-        # Use AI earnings if available and confident, otherwise use base calculation
+        # TẮT AI override - Dùng RPM thực tế $0.50-0.80-1.00 cho VN
+        # AI có thể dùng CPM cao không chính xác cho thị trường VN
         final_earnings = earnings
         final_earnings_vnd = earnings_vnd
-        
-        if ai_earnings and ai_analysis and ai_analysis.get('confidence_score', 0) >= 60:
-            final_earnings = {
-                'estimated_monthly_views': ai_earnings['estimated_monthly_views'],
-                'cpm_range': ai_earnings['cpm_range'],
-                'cpm_region': earnings.get('cpm_region', 'Quốc tế'),
-                'monetization_rate': {
-                    'low': ai_earnings['monetization_rate'] - 0.1,
-                    'average': ai_earnings['monetization_rate'],
-                    'high': ai_earnings['monetization_rate'] + 0.05
-                },
-                'earnings_usd': ai_earnings['earnings_usd'],
-                'calculation_method': 'ai_analysis',
-                'earnings_formula': earnings.get('earnings_formula', '')
-            }
-            final_earnings_vnd = ai_earnings['earnings_vnd']
+        # KHÔNG override bằng ai_earnings nữa - giữ nguyên RPM calculation
         
         result = {
             'success': True,
