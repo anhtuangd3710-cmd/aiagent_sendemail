@@ -214,6 +214,167 @@ Lưu ý:
             logger.error(f"Error processing AI earnings: {e}")
             return None
     
+    # ==================== Monetization Check ====================
+    
+    def check_monetization_status(self, channel_data: Dict, videos: List[Dict] = None) -> Dict:
+        """
+        Check if channel is likely monetized based on various indicators.
+        
+        YouTube Partner Program Requirements (2024):
+        - 1,000+ subscribers
+        - 4,000+ public watch hours in past 12 months OR 10M+ Shorts views in 90 days
+        - Linked AdSense account
+        - No active Community Guidelines strikes
+        - Enable 2-Step Verification
+        - Access to advanced features
+        
+        Since we can't directly check monetization, we analyze indicators.
+        """
+        result = {
+            'is_eligible': False,
+            'is_likely_monetized': False,
+            'eligibility_status': 'unknown',
+            'requirements': {
+                'subscribers': {
+                    'required': 1000,
+                    'current': 0,
+                    'met': False
+                },
+                'watch_hours': {
+                    'required': 4000,
+                    'estimated': 0,
+                    'met': False,
+                    'note': 'Ước tính từ views (không chính xác 100%)'
+                }
+            },
+            'indicators': [],
+            'confidence': 0,
+            'reason': ''
+        }
+        
+        subscribers = channel_data.get('subscriber_count', 0)
+        total_views = channel_data.get('view_count', 0)
+        video_count = channel_data.get('video_count', 0)
+        channel_age_months = 0
+        
+        # Calculate channel age
+        created_at = channel_data.get('created_at', '')
+        if created_at:
+            try:
+                if 'T' in created_at:
+                    created_date = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    channel_age_days = (datetime.now() - created_date.replace(tzinfo=None)).days
+                    channel_age_months = channel_age_days // 30
+            except:
+                pass
+        
+        # Check subscriber requirement
+        result['requirements']['subscribers']['current'] = subscribers
+        result['requirements']['subscribers']['met'] = subscribers >= 1000
+        
+        # Estimate watch hours from views
+        # Average video length assumption: 8 minutes = 0.133 hours
+        # Average watch time: ~50% of video length = 4 minutes = 0.067 hours per view
+        # Only count views from last 12 months (estimate based on channel activity)
+        
+        if video_count > 0 and total_views > 0:
+            avg_views_per_video = total_views / video_count
+            
+            # Estimate monthly views
+            if channel_age_months > 0:
+                monthly_views = total_views / channel_age_months
+                yearly_views = monthly_views * 12 if channel_age_months >= 12 else total_views
+            else:
+                yearly_views = total_views
+            
+            # Estimate watch hours (assuming 4 minutes average watch time per view)
+            estimated_watch_hours = (yearly_views * 4) / 60  # 4 minutes per view
+            result['requirements']['watch_hours']['estimated'] = int(estimated_watch_hours)
+            result['requirements']['watch_hours']['met'] = estimated_watch_hours >= 4000
+        
+        # Determine eligibility
+        subs_met = result['requirements']['subscribers']['met']
+        hours_met = result['requirements']['watch_hours']['met']
+        
+        if subs_met and hours_met:
+            result['is_eligible'] = True
+            result['eligibility_status'] = 'eligible'
+            result['indicators'].append('✅ Đủ điều kiện tham gia YouTube Partner Program')
+        elif subs_met:
+            result['eligibility_status'] = 'partial'
+            result['indicators'].append('⚠️ Đủ subscribers nhưng có thể chưa đủ giờ xem')
+        elif hours_met:
+            result['eligibility_status'] = 'partial'
+            result['indicators'].append('⚠️ Có thể đủ giờ xem nhưng chưa đủ subscribers')
+        else:
+            result['eligibility_status'] = 'not_eligible'
+            result['indicators'].append('❌ Chưa đủ điều kiện tham gia YouTube Partner Program')
+        
+        # Additional indicators for monetization
+        confidence_score = 0
+        
+        # 1. Check subscriber count (strong indicator)
+        if subscribers >= 100000:
+            result['indicators'].append('🌟 Kênh lớn (100K+ subs) - rất có thể đã monetize')
+            confidence_score += 40
+        elif subscribers >= 10000:
+            result['indicators'].append('📈 Kênh trung bình (10K+ subs) - có thể đã monetize')
+            confidence_score += 30
+        elif subscribers >= 1000:
+            result['indicators'].append('📊 Đủ 1000 subscribers - đủ điều kiện đăng ký')
+            confidence_score += 20
+        
+        # 2. Check channel age
+        if channel_age_months >= 12:
+            result['indicators'].append(f'📅 Kênh hoạt động {channel_age_months} tháng - đủ thời gian để monetize')
+            confidence_score += 15
+        elif channel_age_months >= 6:
+            confidence_score += 10
+        
+        # 3. Check video count and consistency
+        if video_count >= 50:
+            result['indicators'].append('🎬 Nhiều video (50+) - kênh chuyên nghiệp')
+            confidence_score += 15
+        elif video_count >= 20:
+            confidence_score += 10
+        
+        # 4. Check views per video ratio (engagement indicator)
+        if video_count > 0:
+            avg_views = total_views / video_count
+            if avg_views >= 10000:
+                result['indicators'].append('🔥 Views/video cao - nội dung chất lượng')
+                confidence_score += 15
+            elif avg_views >= 1000:
+                confidence_score += 10
+        
+        # 5. Analyze recent videos for monetization signs
+        if videos:
+            recent_high_views = sum(1 for v in videos[:10] if v.get('view_count', 0) >= 1000)
+            if recent_high_views >= 5:
+                result['indicators'].append('📹 Video gần đây có nhiều views - kênh đang active')
+                confidence_score += 10
+        
+        # Determine if likely monetized
+        result['confidence'] = min(confidence_score, 100)
+        
+        if result['is_eligible'] and confidence_score >= 50:
+            result['is_likely_monetized'] = True
+            result['reason'] = 'Kênh đủ điều kiện và có nhiều dấu hiệu đã bật kiếm tiền'
+        elif result['is_eligible'] and confidence_score >= 30:
+            result['is_likely_monetized'] = True
+            result['reason'] = 'Kênh có thể đã bật kiếm tiền (đủ điều kiện cơ bản)'
+        elif result['is_eligible']:
+            result['is_likely_monetized'] = False
+            result['reason'] = 'Kênh đủ điều kiện nhưng chưa chắc đã đăng ký monetize'
+        else:
+            result['is_likely_monetized'] = False
+            if not subs_met:
+                result['reason'] = f'Cần thêm {1000 - subscribers:,} subscribers để đủ điều kiện'
+            else:
+                result['reason'] = 'Cần thêm giờ xem để đủ điều kiện'
+        
+        return result
+    
     # ==================== URL Parsing ====================
     
     def parse_youtube_url(self, url: str) -> Dict:
@@ -1439,6 +1600,10 @@ Lưu ý:
                 'ai_enabled': False,
                 'reason': 'AI analysis not available'
             }
+        
+        # Check monetization status
+        monetization_status = self.check_monetization_status(stats, recent_videos)
+        result['monetization'] = monetization_status
         
         return result
 

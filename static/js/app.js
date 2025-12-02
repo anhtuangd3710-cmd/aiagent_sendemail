@@ -4371,6 +4371,90 @@ async function analyzeYouTubeChannel() {
     }
 }
 
+// Display Monetization Status
+function displayMonetizationStatus(monetization) {
+    const monetizationSection = document.getElementById('monetization-section');
+    if (!monetizationSection) return;
+    
+    const badge = document.getElementById('monetization-badge');
+    const reason = document.getElementById('monetization-reason');
+    const reqSubscribers = document.getElementById('req-subscribers');
+    const reqWatchHours = document.getElementById('req-watch-hours');
+    const indicatorsContainer = document.getElementById('monetization-indicators');
+    
+    if (!monetization || Object.keys(monetization).length === 0) {
+        monetizationSection.style.display = 'none';
+        return;
+    }
+    
+    monetizationSection.style.display = 'block';
+    
+    // Badge
+    if (badge) {
+        badge.className = 'monetization-badge';
+        if (monetization.is_likely_monetized) {
+            badge.classList.add('monetized');
+            badge.innerHTML = '<i class="fas fa-check-circle"></i> Có khả năng đã bật kiếm tiền';
+        } else if (monetization.eligibility_status === 'partial') {
+            badge.classList.add('partial');
+            badge.innerHTML = '<i class="fas fa-exclamation-circle"></i> Đáp ứng một phần yêu cầu';
+        } else {
+            badge.classList.add('not-monetized');
+            badge.innerHTML = '<i class="fas fa-times-circle"></i> Chưa đủ điều kiện kiếm tiền';
+        }
+        
+        // Add confidence
+        if (monetization.confidence) {
+            badge.innerHTML += ` <span class="confidence">(Độ tin cậy: ${monetization.confidence}%)</span>`;
+        }
+    }
+    
+    // Reason
+    if (reason) {
+        reason.textContent = monetization.reason || '';
+    }
+    
+    // Requirements
+    const requirements = monetization.requirements || {};
+    
+    if (reqSubscribers && requirements.subscribers) {
+        const subReq = requirements.subscribers;
+        const isMet = subReq.met;
+        reqSubscribers.innerHTML = `
+            <span class="req-label">Người đăng ký</span>
+            <span class="req-value">${formatNumber(subReq.current)} / ${formatNumber(subReq.required)}</span>
+            <span class="req-status ${isMet ? 'met' : 'not-met'}">
+                <i class="fas fa-${isMet ? 'check' : 'times'}"></i> ${isMet ? 'Đạt' : 'Chưa đạt'}
+            </span>
+        `;
+    }
+    
+    if (reqWatchHours && requirements.watch_hours) {
+        const watchReq = requirements.watch_hours;
+        const isMet = watchReq.met;
+        reqWatchHours.innerHTML = `
+            <span class="req-label">Giờ xem (12 tháng)</span>
+            <span class="req-value">${formatNumber(watchReq.estimated)} / ${formatNumber(watchReq.required)}</span>
+            <span class="req-status ${isMet ? 'met' : 'not-met'}">
+                <i class="fas fa-${isMet ? 'check' : 'times'}"></i> ${isMet ? 'Đạt (ước tính)' : 'Chưa đạt (ước tính)'}
+            </span>
+        `;
+    }
+    
+    // Indicators
+    if (indicatorsContainer && monetization.indicators && monetization.indicators.length > 0) {
+        indicatorsContainer.innerHTML = '<h5><i class="fas fa-list-ul"></i> Các chỉ số đánh giá:</h5>';
+        const indicatorsList = document.createElement('ul');
+        indicatorsList.className = 'indicators-list';
+        monetization.indicators.forEach(indicator => {
+            const li = document.createElement('li');
+            li.textContent = indicator;
+            indicatorsList.appendChild(li);
+        });
+        indicatorsContainer.appendChild(indicatorsList);
+    }
+}
+
 function displayYouTubeResults(data) {
     const channel = data.channel || {};
     const earnings = data.earnings || {};
@@ -4395,6 +4479,10 @@ function displayYouTubeResults(data) {
     document.getElementById('stat-subscribers').textContent = formatNumber(channel.subscriber_count || 0);
     document.getElementById('stat-views').textContent = formatNumber(channel.view_count || 0);
     document.getElementById('stat-videos').textContent = formatNumber(channel.video_count || 0);
+    
+    // Monetization Status
+    const monetization = data.monetization || {};
+    displayMonetizationStatus(monetization);
     
     // Earnings USD
     const earningsUsd = earnings.earnings_usd || {};
