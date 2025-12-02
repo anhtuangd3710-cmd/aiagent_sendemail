@@ -275,6 +275,196 @@ Lưu ý:
             logger.error(f"Error processing AI earnings: {e}")
             return None
     
+    def analyze_rpm_with_ai(self, channel_data: Dict, videos: List[Dict], monthly_data: Dict) -> Dict:
+        """
+        Sử dụng Gemini AI để phân tích và tính RPM chính xác dựa trên tất cả dữ liệu kênh.
+        AI sẽ xem xét: niche, region, engagement, video length, growth trend, v.v.
+        
+        Returns:
+            Dict với rpm_low, rpm_avg, rpm_high và phân tích chi tiết
+        """
+        if not self.ai_enabled or not self.ai_model:
+            logger.warning("AI not available for RPM analysis")
+            return None
+        
+        try:
+            # Thu thập tất cả dữ liệu có thể
+            channel_name = channel_data.get('title', 'Unknown')
+            subscribers = channel_data.get('subscriber_count', 0)
+            total_views = channel_data.get('view_count', 0)
+            video_count = channel_data.get('video_count', 0)
+            country = channel_data.get('country', 'Unknown')
+            description = channel_data.get('description', '')[:500]
+            channel_age_months = monthly_data.get('channel_age_months', 0)
+            
+            # Monthly metrics
+            views_30_days = monthly_data.get('views_last_30_days', 0)
+            videos_30_days = monthly_data.get('videos_last_30_days', 0)
+            avg_views_per_video = monthly_data.get('avg_views_per_video', 0)
+            avg_monthly_views = monthly_data.get('avg_monthly_views_lifetime', 0)
+            estimated_monthly = monthly_data.get('estimated_monthly_views', 0)
+            
+            # Video analysis
+            video_data = []
+            total_likes = 0
+            total_comments = 0
+            total_video_views = 0
+            video_lengths = []
+            
+            for v in videos[:15]:  # Analyze up to 15 videos
+                views = v.get('view_count', 0)
+                likes = v.get('like_count', 0)
+                comments = v.get('comment_count', 0)
+                duration = v.get('duration_minutes', 0)
+                
+                total_video_views += views
+                total_likes += likes
+                total_comments += comments
+                if duration > 0:
+                    video_lengths.append(duration)
+                
+                video_data.append({
+                    'title': v.get('title', '')[:60],
+                    'views': views,
+                    'likes': likes,
+                    'comments': comments,
+                    'duration_min': duration,
+                    'published': v.get('published_text', '') or str(v.get('published_at', ''))[:10]
+                })
+            
+            # Calculate engagement metrics
+            engagement_rate = 0
+            if total_video_views > 0:
+                engagement_rate = round((total_likes + total_comments) / total_video_views * 100, 2)
+            
+            avg_video_length = round(sum(video_lengths) / len(video_lengths), 1) if video_lengths else 0
+            
+            # Calculate views per subscriber
+            views_per_sub = round(avg_views_per_video / subscribers * 100, 1) if subscribers > 0 else 0
+            
+            # Build comprehensive prompt
+            prompt = f"""Bạn là chuyên gia phân tích YouTube monetization với kiến thức sâu về CPM/RPM thực tế.
+
+**NHIỆM VỤ:** Phân tích kênh và tính RPM (Revenue Per Mille - số tiền thực nhận trên 1000 views) phù hợp.
+
+**DỮ LIỆU KÊNH:**
+- Tên kênh: {channel_name}
+- Subscribers: {subscribers:,}
+- Tổng views: {total_views:,}
+- Số video: {video_count}
+- Quốc gia: {country}
+- Tuổi kênh: {channel_age_months} tháng
+- Mô tả: {description}
+
+**METRICS THÁNG GẦN ĐÂY:**
+- Views 30 ngày: {views_30_days:,}
+- Video đăng 30 ngày: {videos_30_days}
+- Views TB/video: {avg_views_per_video:,}
+- Views TB/tháng (lifetime): {avg_monthly_views:,}
+- Ước tính views tháng này: {estimated_monthly:,}
+
+**ENGAGEMENT & PERFORMANCE:**
+- Engagement rate: {engagement_rate}%
+- Views/Subscriber: {views_per_sub}%
+- Độ dài video TB: {avg_video_length} phút
+
+**15 VIDEO GẦN NHẤT:**
+{json.dumps(video_data, ensure_ascii=False, indent=2)}
+
+**KIẾN THỨC RPM THỰC TẾ (tham khảo):**
+- Kênh Việt Nam thuần: $0.30 - $0.80 - $1.20 RPM
+- Kênh VN có 20-40% khán giả quốc tế: $0.80 - $1.50 - $2.50 RPM
+- Kênh VN chủ yếu khán giả US/UK: $2.00 - $4.00 - $6.00 RPM
+- Finance/Business niche: +50-100% so với entertainment
+- Gaming/Music: thường thấp hơn 20-30%
+- Video dài (>8 phút) có mid-roll ads: +30-50% RPM
+- Video ngắn/Shorts: RPM rất thấp ~$0.05-$0.20
+
+**YÊU CẦU:** 
+Dựa trên TẤT CẢ dữ liệu trên, hãy:
+1. Xác định niche của kênh
+2. Ước tính % khán giả quốc tế (dựa trên ngôn ngữ video, engagement pattern)
+3. Tính RPM phù hợp (KHÔNG dùng CPM)
+4. Tính thu nhập ước tính
+
+**TRẢ VỀ JSON (CHỈ JSON, KHÔNG CÓ TEXT KHÁC):**
+{{
+    "niche": "niche name in English",
+    "niche_vi": "tên niche tiếng Việt",
+    "audience_region": "vietnam/international/mixed",
+    "international_percent": số % khán giả quốc tế (0-100),
+    "rpm_low": RPM thấp (USD, 2 decimal),
+    "rpm_avg": RPM trung bình (USD, 2 decimal),
+    "rpm_high": RPM cao (USD, 2 decimal),
+    "rpm_reasoning": "giải thích ngắn tại sao chọn RPM này",
+    "estimated_monthly_views": số views tháng này (integer),
+    "earnings_low": thu nhập thấp USD/tháng,
+    "earnings_avg": thu nhập TB USD/tháng,
+    "earnings_high": thu nhập cao USD/tháng,
+    "monetization_factors": {{
+        "video_length_bonus": 1.0-1.5 (bonus cho video dài),
+        "engagement_factor": 0.8-1.2 (dựa trên engagement),
+        "niche_factor": 0.7-2.0 (dựa trên niche),
+        "growth_factor": 0.9-1.1 (xu hướng tăng trưởng)
+    }},
+    "confidence_score": 0-100,
+    "analysis": "phân tích ngắn 2-3 câu bằng tiếng Việt"
+}}"""
+
+            # Call Gemini API
+            response = self.ai_model.generate_content(prompt)
+            ai_response = response.text.strip()
+            
+            # Extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', ai_response)
+            if json_match:
+                ai_result = json.loads(json_match.group())
+                
+                # Validate and sanitize results
+                rpm_low = max(0.05, min(10.0, float(ai_result.get('rpm_low', 0.5))))
+                rpm_avg = max(rpm_low, min(15.0, float(ai_result.get('rpm_avg', 0.8))))
+                rpm_high = max(rpm_avg, min(20.0, float(ai_result.get('rpm_high', 1.2))))
+                
+                # Recalculate earnings based on RPM
+                est_views = int(ai_result.get('estimated_monthly_views', estimated_monthly))
+                
+                result = {
+                    'success': True,
+                    'niche': ai_result.get('niche', 'entertainment'),
+                    'niche_vi': ai_result.get('niche_vi', 'Giải trí'),
+                    'audience_region': ai_result.get('audience_region', 'vietnam'),
+                    'international_percent': int(ai_result.get('international_percent', 0)),
+                    'rpm': {
+                        'low': round(rpm_low, 2),
+                        'avg': round(rpm_avg, 2),
+                        'high': round(rpm_high, 2)
+                    },
+                    'rpm_reasoning': ai_result.get('rpm_reasoning', ''),
+                    'estimated_monthly_views': est_views,
+                    'earnings_usd': {
+                        'low': round(est_views * rpm_low / 1000, 2),
+                        'average': round(est_views * rpm_avg / 1000, 2),
+                        'high': round(est_views * rpm_high / 1000, 2)
+                    },
+                    'monetization_factors': ai_result.get('monetization_factors', {}),
+                    'confidence_score': int(ai_result.get('confidence_score', 70)),
+                    'analysis': ai_result.get('analysis', ''),
+                    'source': 'gemini_ai'
+                }
+                
+                logger.info(f"AI RPM analysis: {result['niche']} - RPM ${rpm_low}-${rpm_avg}-${rpm_high}")
+                return result
+            
+            logger.warning("Could not parse AI response JSON")
+            return None
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"AI RPM response JSON parse error: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"AI RPM analysis error: {e}")
+            return None
+
     # ==================== Monetization Check ====================
     
     def check_monetization_status(self, channel_data: Dict, videos: List[Dict] = None) -> Dict:
@@ -1715,14 +1905,78 @@ Lưu ý:
             'monetization_rate': 0.25  # Approximate % of views that generate revenue
         }
     
-    def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None, videos: List[Dict] = None) -> Dict:
+    def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None, videos: List[Dict] = None, use_ai: bool = True) -> Dict:
         """
         Estimate monthly earnings based on channel stats and actual monthly views.
-        Uses ACTUAL RPM data with international audience consideration for more accurate estimates.
+        Ưu tiên dùng AI để phân tích RPM nếu được bật, fallback sang RPM mặc định nếu AI fail.
+        
+        Args:
+            stats: Channel statistics
+            monthly_views_data: Monthly view data from calculate_monthly_views()
+            videos: List of recent videos
+            use_ai: Whether to use AI for RPM analysis (default True)
         """
         subscriber_count = stats.get('subscriber_count', 0)
         view_count = stats.get('view_count', 0)
         video_count = stats.get('video_count', 0)
+        
+        # Get estimated monthly views first
+        if monthly_views_data and monthly_views_data.get('estimated_monthly_views', 0) > 0:
+            estimated_monthly_views = monthly_views_data['estimated_monthly_views']
+            calculation_method = monthly_views_data.get('calculation_method', 'data_analysis')
+        else:
+            # Fallback calculation
+            if video_count > 0 and view_count > 0:
+                avg_views_per_video = view_count / video_count
+                estimated_monthly_views = int(avg_views_per_video * 4)
+            elif subscriber_count > 0:
+                estimated_monthly_views = int(subscriber_count * 2)
+            else:
+                estimated_monthly_views = 0
+            calculation_method = 'fallback_estimate'
+        
+        # ========== TRY AI RPM ANALYSIS FIRST ==========
+        ai_rpm_result = None
+        if use_ai and self.ai_enabled and videos:
+            logger.info("Attempting AI RPM analysis...")
+            ai_rpm_result = self.analyze_rpm_with_ai(stats, videos, monthly_views_data or {})
+        
+        if ai_rpm_result and ai_rpm_result.get('success'):
+            # Use AI-calculated RPM and earnings
+            logger.info(f"Using AI RPM: ${ai_rpm_result['rpm']['low']}-${ai_rpm_result['rpm']['avg']}-${ai_rpm_result['rpm']['high']}")
+            
+            return {
+                'estimated_monthly_views': ai_rpm_result.get('estimated_monthly_views', estimated_monthly_views),
+                'monthly_views_data': monthly_views_data or {},
+                'calculation_method': 'ai_analysis',
+                'niche': ai_rpm_result.get('niche', 'entertainment'),
+                'niche_vi': ai_rpm_result.get('niche_vi', 'Giải trí'),
+                'audience_region': ai_rpm_result.get('audience_region', 'vietnam'),
+                'international_audience': {
+                    'international_percent': ai_rpm_result.get('international_percent', 0),
+                    'indicators': []
+                },
+                'cpm_range': {  # Estimate CPM from RPM (RPM ≈ CPM × 0.45 × monetization_rate)
+                    'low': round(ai_rpm_result['rpm']['low'] * 2.5, 2),
+                    'avg': round(ai_rpm_result['rpm']['avg'] * 2.5, 2),
+                    'high': round(ai_rpm_result['rpm']['high'] * 2.5, 2)
+                },
+                'rpm_range': ai_rpm_result['rpm'],
+                'cpm_region': self._get_region_vietnamese(ai_rpm_result.get('audience_region', 'vietnam')),
+                'monetization_rate': ai_rpm_result.get('monetization_factors', {}).get('engagement_factor', 0.45),
+                'engagement_rate': 0,  # Will be calculated below if needed
+                'seasonality': 1.0,
+                'video_length_bonus': ai_rpm_result.get('monetization_factors', {}).get('video_length_bonus', 1.0),
+                'region_note': ai_rpm_result.get('rpm_reasoning', ''),
+                'earnings_usd': ai_rpm_result['earnings_usd'],
+                'earnings_formula': 'Thu nhập = Views × RPM ÷ 1000 (RPM do AI phân tích)',
+                'ai_analysis': ai_rpm_result.get('analysis', ''),
+                'ai_confidence': ai_rpm_result.get('confidence_score', 0),
+                'source': 'gemini_ai'
+            }
+        
+        # ========== FALLBACK TO DEFAULT RPM ==========
+        logger.info("Using default RPM calculation (AI not available or failed)")
         
         # Detect niche and region
         niche = self.detect_channel_niche(stats, videos)
@@ -1749,21 +2003,6 @@ Lưu ý:
         # Get RPM calculation with ALL factors including international audience
         rpm_data = self.calculate_rpm(niche, region, engagement_rate, avg_video_length, international_data)
         
-        # Get estimated monthly views from actual data
-        if monthly_views_data and monthly_views_data.get('estimated_monthly_views', 0) > 0:
-            estimated_monthly_views = monthly_views_data['estimated_monthly_views']
-            calculation_method = monthly_views_data.get('calculation_method', 'data_analysis')
-        else:
-            # Fallback calculation
-            if video_count > 0 and view_count > 0:
-                avg_views_per_video = view_count / video_count
-                estimated_monthly_views = int(avg_views_per_video * 4)
-            elif subscriber_count > 0:
-                estimated_monthly_views = int(subscriber_count * 2)
-            else:
-                estimated_monthly_views = 0
-            calculation_method = 'fallback_estimate'
-        
         # Calculate earnings using ACTUAL RPM (Revenue Per Mille)
         # Formula: Monthly Views × RPM ÷ 1000
         earnings_low = (estimated_monthly_views * rpm_data['rpm']['low']) / 1000
@@ -1776,7 +2015,7 @@ Lưu ý:
             if international_data['international_percent'] >= 30:
                 notes.append(f"~{international_data['international_percent']}% khán giả quốc tế → RPM cao hơn")
             else:
-                notes.append("Khán giả chủ yếu VN → RPM thấp ($0.02-0.15)")
+                notes.append("Khán giả chủ yếu VN → RPM thấp ($0.50-$1.00)")
         
         if international_data['indicators']:
             notes.extend(international_data['indicators'][:2])
@@ -1807,7 +2046,8 @@ Lưu ý:
                 'average': round(earnings_avg, 2),
                 'high': round(earnings_high, 2)
             },
-            'earnings_formula': 'Thu nhập = Views × RPM ÷ 1000 (RPM là số tiền thực nhận/1000 views)'
+            'earnings_formula': 'Thu nhập = Views × RPM ÷ 1000 (RPM là số tiền thực nhận/1000 views)',
+            'source': 'default_rpm'
         }
     
     def _get_niche_vietnamese(self, niche: str) -> str:
