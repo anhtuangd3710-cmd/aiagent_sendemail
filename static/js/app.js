@@ -356,6 +356,7 @@ function navigateTo(page) {
         inbox: { title: 'Email Đã Gửi', subtitle: 'Quản lý và theo dõi các email đã gửi' },
         cv: { title: 'Đánh giá CV', subtitle: 'AI đánh giá CV ứng viên và tự động gửi thư mời' },
         monitor: { title: 'Giám sát phản hồi', subtitle: 'Theo dõi và phân tích phản hồi tự động' },
+        youtube: { title: 'Phân tích YouTube', subtitle: 'Ước tính thu nhập kênh YouTube' },
         settings: { title: 'Cài đặt', subtitle: 'Cấu hình và hướng dẫn sử dụng' },
         profile: { title: 'Hồ sơ & API Keys', subtitle: 'Quản lý thông tin cá nhân và cấu hình API' }
     };
@@ -4296,3 +4297,161 @@ window.viewDraftDetails = viewDraftDetails;
 window.deleteAutoReplyDraft = deleteAutoReplyDraft;
 window.deleteAllAutoReplyDrafts = deleteAllAutoReplyDrafts;
 window.closeDraftDetailModal = closeDraftDetailModal;
+window.analyzeYouTubeChannel = analyzeYouTubeChannel;
+
+// ==================== YouTube Analyzer ====================
+
+function initYouTubeAnalyzer() {
+    const analyzeBtn = document.getElementById('analyze-youtube-btn');
+    const urlInput = document.getElementById('youtube-url');
+    
+    if (analyzeBtn) {
+        analyzeBtn.addEventListener('click', analyzeYouTubeChannel);
+    }
+    
+    if (urlInput) {
+        urlInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                analyzeYouTubeChannel();
+            }
+        });
+    }
+}
+
+async function analyzeYouTubeChannel() {
+    const urlInput = document.getElementById('youtube-url');
+    const loadingEl = document.getElementById('youtube-loading');
+    const resultsEl = document.getElementById('youtube-results');
+    const errorEl = document.getElementById('youtube-error');
+    const analyzeBtn = document.getElementById('analyze-youtube-btn');
+    
+    const url = urlInput?.value?.trim();
+    
+    if (!url) {
+        showToast('warning', 'Thiếu thông tin', 'Vui lòng nhập link kênh YouTube');
+        urlInput?.focus();
+        return;
+    }
+    
+    // Hide previous results/errors
+    if (resultsEl) resultsEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'none';
+    
+    // Show loading
+    if (loadingEl) loadingEl.style.display = 'block';
+    if (analyzeBtn) {
+        analyzeBtn.disabled = true;
+        analyzeBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang phân tích...';
+    }
+    
+    try {
+        const response = await authFetch(`${API_BASE}/api/youtube/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displayYouTubeResults(data);
+            if (resultsEl) resultsEl.style.display = 'block';
+        } else {
+            showYouTubeError(data.error || 'Không thể phân tích kênh');
+        }
+    } catch (error) {
+        console.error('YouTube analysis error:', error);
+        showYouTubeError('Lỗi kết nối. Vui lòng thử lại.');
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+        if (analyzeBtn) {
+            analyzeBtn.disabled = false;
+            analyzeBtn.innerHTML = '<i class="fas fa-chart-line"></i> Phân tích';
+        }
+    }
+}
+
+function displayYouTubeResults(data) {
+    const channel = data.channel || {};
+    const earnings = data.earnings || {};
+    const earningsVnd = data.earnings_vnd || {};
+    
+    // Channel Info
+    const thumbnail = document.getElementById('channel-thumbnail');
+    if (thumbnail) {
+        thumbnail.src = channel.thumbnail || '';
+        thumbnail.onerror = () => { thumbnail.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect fill="%23ddd" width="100" height="100"/><text x="50" y="55" font-size="40" text-anchor="middle" fill="%23999">YT</text></svg>'; };
+    }
+    
+    const channelName = document.getElementById('channel-name');
+    if (channelName) channelName.textContent = channel.title || 'Unknown Channel';
+    
+    const channelDesc = document.getElementById('channel-description');
+    if (channelDesc) channelDesc.textContent = channel.description || 'Không có mô tả';
+    
+    // Stats
+    document.getElementById('stat-subscribers').textContent = formatNumber(channel.subscriber_count || 0);
+    document.getElementById('stat-views').textContent = formatNumber(channel.view_count || 0);
+    document.getElementById('stat-videos').textContent = formatNumber(channel.video_count || 0);
+    
+    // Earnings USD
+    const earningsUsd = earnings.earnings_usd || {};
+    document.getElementById('earnings-low-usd').textContent = `$${formatNumber(earningsUsd.low || 0)}`;
+    document.getElementById('earnings-avg-usd').textContent = `$${formatNumber(earningsUsd.average || 0)}`;
+    document.getElementById('earnings-high-usd').textContent = `$${formatNumber(earningsUsd.high || 0)}`;
+    
+    // Earnings VND
+    document.getElementById('earnings-low-vnd').textContent = formatVND(earningsVnd.low || 0);
+    document.getElementById('earnings-avg-vnd').textContent = formatVND(earningsVnd.average || 0);
+    document.getElementById('earnings-high-vnd').textContent = formatVND(earningsVnd.high || 0);
+    
+    // Exchange Rate
+    const exchangeRate = data.exchange_rate || 24500;
+    document.getElementById('exchange-rate').textContent = `1 USD = ${formatNumber(exchangeRate)} VND`;
+    
+    // Monthly Views
+    const monthlyViews = earnings.estimated_monthly_views || {};
+    document.getElementById('monthly-views-low').textContent = formatNumber(monthlyViews.low || 0);
+    document.getElementById('monthly-views-avg').textContent = `~${formatNumber(monthlyViews.average || 0)}`;
+    document.getElementById('monthly-views-high').textContent = formatNumber(monthlyViews.high || 0);
+    
+    // Disclaimer
+    const disclaimer = document.getElementById('disclaimer-text');
+    if (disclaimer) disclaimer.textContent = data.disclaimer || '';
+}
+
+function showYouTubeError(message) {
+    const errorEl = document.getElementById('youtube-error');
+    const errorMsg = document.getElementById('youtube-error-message');
+    
+    if (errorMsg) errorMsg.textContent = message;
+    if (errorEl) errorEl.style.display = 'block';
+}
+
+function formatNumber(num) {
+    if (num >= 1000000000) {
+        return (num / 1000000000).toFixed(1) + 'B';
+    }
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    }
+    if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toLocaleString('vi-VN');
+}
+
+function formatVND(num) {
+    if (num >= 1000000000) {
+        return (num / 1000000000).toFixed(1) + ' tỷ ₫';
+    }
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + ' triệu ₫';
+    }
+    return num.toLocaleString('vi-VN') + ' ₫';
+}
+
+// Initialize YouTube on page load
+document.addEventListener('DOMContentLoaded', () => {
+    initYouTubeAnalyzer();
+});

@@ -2076,6 +2076,33 @@ def delete_all_auto_reply_drafts():
         return jsonify({"success": False, "error": str(e)}), 500
 
 
+# ==================== YouTube Analyzer API ====================
+
+@app.route('/api/youtube/analyze', methods=['POST'])
+@login_required
+def analyze_youtube_channel():
+    """Analyze a YouTube channel and estimate earnings"""
+    try:
+        from services.youtube_analyzer import get_youtube_analyzer
+        
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        
+        if not url:
+            return jsonify({'success': False, 'error': 'Vui lòng nhập link kênh YouTube'})
+        
+        # Get YouTube API key from environment (optional)
+        youtube_api_key = os.environ.get('YOUTUBE_API_KEY')
+        
+        analyzer = get_youtube_analyzer(youtube_api_key)
+        result = analyzer.analyze_channel(url)
+        
+        return jsonify(result)
+    except Exception as e:
+        logger.error(f"YouTube analysis error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 # HTML Templates for confirmation pages
 CONFIRMATION_SUCCESS_HTML = """
 <!DOCTYPE html>

@@ -5304,3 +5304,445 @@ select:focus-visible {
     min-width: 120px;
     padding: 10px 20px;
 }
+
+/* ==================== YouTube Analyzer Styles ==================== */
+
+.youtube-container {
+    max-width: 900px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.youtube-input-card .card-header h2 {
+    color: #ff0000;
+}
+
+.youtube-input-card .card-header h2 i {
+    color: #ff0000;
+}
+
+.youtube-intro {
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    font-size: 14px;
+}
+
+.youtube-input-group {
+    display: flex;
+    gap: 12px;
+    align-items: stretch;
+}
+
+.youtube-input-group .input-with-icon {
+    flex: 1;
+    position: relative;
+}
+
+.youtube-input-group .input-with-icon i {
+    position: absolute;
+    left: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+}
+
+.youtube-input-group .form-input {
+    width: 100%;
+    padding: 14px 16px 14px 44px;
+    font-size: 15px;
+}
+
+.btn-youtube {
+    background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+    color: white;
+    border: none;
+    padding: 14px 28px;
+    border-radius: 10px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.btn-youtube:hover {
+    background: linear-gradient(135deg, #cc0000 0%, #990000 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 0, 0, 0.3);
+}
+
+.btn-youtube:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.youtube-examples {
+    margin-top: 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.youtube-examples code {
+    background: var(--bg-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--primary-color);
+}
+
+/* Loading Animation */
+.youtube-loading .loading-animation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px;
+    gap: 16px;
+}
+
+.youtube-loading .spinner {
+    width: 50px;
+    height: 50px;
+    border: 4px solid var(--border-color);
+    border-top-color: #ff0000;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+/* Channel Info */
+.channel-info {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+    margin-bottom: 24px;
+}
+
+.channel-avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    overflow: hidden;
+    flex-shrink: 0;
+    background: var(--border-color);
+}
+
+.channel-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.channel-details h3 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    color: var(--text-primary);
+}
+
+.channel-desc {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Stats Grid */
+.youtube-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 12px;
+    background: var(--bg-secondary);
+}
+
+.stat-card.subscribers {
+    background: linear-gradient(135deg, rgba(255, 0, 0, 0.1) 0%, rgba(255, 0, 0, 0.05) 100%);
+    border: 1px solid rgba(255, 0, 0, 0.2);
+}
+
+.stat-card.views {
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.stat-card.videos {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.stat-icon {
+    width: 50px;
+    height: 50px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+}
+
+.stat-card.subscribers .stat-icon {
+    background: rgba(255, 0, 0, 0.15);
+    color: #ff0000;
+}
+
+.stat-card.views .stat-icon {
+    background: rgba(99, 102, 241, 0.15);
+    color: var(--primary-color);
+}
+
+.stat-card.videos .stat-icon {
+    background: rgba(16, 185, 129, 0.15);
+    color: var(--success-color);
+}
+
+.stat-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+/* Earnings Section */
+.earnings-section {
+    margin-bottom: 24px;
+}
+
+.earnings-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+.earnings-section h4 i {
+    color: var(--success-color);
+}
+
+.earnings-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.earnings-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    border-radius: 12px;
+    text-align: center;
+}
+
+.earnings-card.low {
+    background: linear-gradient(135deg, rgba(156, 163, 175, 0.1) 0%, rgba(156, 163, 175, 0.05) 100%);
+    border: 1px solid rgba(156, 163, 175, 0.3);
+}
+
+.earnings-card.average {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(245, 158, 11, 0.05) 100%);
+    border: 2px solid rgba(245, 158, 11, 0.5);
+    transform: scale(1.05);
+}
+
+.earnings-card.high {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.earnings-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+}
+
+.earnings-card.low .earnings-label { color: #6b7280; }
+.earnings-card.average .earnings-label { color: #f59e0b; }
+.earnings-card.high .earnings-label { color: var(--success-color); }
+
+.earnings-usd {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+
+.earnings-vnd {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.exchange-rate-info {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.exchange-rate-info i {
+    color: var(--primary-color);
+}
+
+/* Monthly Views Section */
+.monthly-views-section {
+    margin-bottom: 24px;
+}
+
+.monthly-views-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+.monthly-views-section h4 i {
+    color: var(--primary-color);
+}
+
+.views-range {
+    padding: 20px;
+    background: var(--bg-secondary);
+    border-radius: 12px;
+}
+
+.views-bar {
+    height: 12px;
+    background: linear-gradient(90deg, #e5e7eb 0%, #f59e0b 50%, #10b981 100%);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+}
+
+.views-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 6px;
+    transition: width 0.5s ease;
+}
+
+.views-labels {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 12px;
+    font-size: 13px;
+}
+
+.views-labels span:first-child { color: #6b7280; }
+.views-labels span:nth-child(2) { color: #f59e0b; font-weight: 600; }
+.views-labels span:last-child { color: var(--success-color); }
+
+/* Disclaimer */
+.youtube-disclaimer {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 10px;
+}
+
+.youtube-disclaimer i {
+    color: #f59e0b;
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.youtube-disclaimer p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* Error Card */
+.youtube-error .error-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px;
+    gap: 16px;
+    text-align: center;
+}
+
+.youtube-error .error-content i {
+    font-size: 48px;
+    color: var(--danger-color);
+}
+
+.youtube-error .error-content p {
+    font-size: 15px;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .youtube-input-group {
+        flex-direction: column;
+    }
+    
+    .youtube-stats-grid,
+    .earnings-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .earnings-card.average {
+        transform: none;
+    }
+    
+    .channel-info {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .youtube-examples {
+        justify-content: center;
+    }
+}

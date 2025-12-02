@@ -45,6 +45,10 @@
                 <i class="fas fa-satellite-dish"></i>
                 <span>Giám sát</span>
             </a>
+            <a href="#" class="nav-item" data-page="youtube">
+                <i class="fab fa-youtube"></i>
+                <span>YouTube</span>
+            </a>
             <a href="#" class="nav-item" data-page="settings">
                 <i class="fas fa-cog"></i>
                 <span>Cài đặt</span>
@@ -536,6 +540,162 @@
                                         <p>Bắt đầu bằng cách đánh giá một CV</p>
                                     </div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- YouTube Analyzer Page -->
+            <section class="page" id="page-youtube">
+                <div class="youtube-container">
+                    <!-- Input Card -->
+                    <div class="card youtube-input-card">
+                        <div class="card-header">
+                            <h2><i class="fab fa-youtube"></i> Phân tích kênh YouTube</h2>
+                        </div>
+                        <div class="card-body">
+                            <p class="youtube-intro">
+                                Nhập link kênh YouTube để phân tích và ước tính thu nhập hàng tháng
+                            </p>
+                            <div class="youtube-input-group">
+                                <div class="input-with-icon">
+                                    <i class="fas fa-link"></i>
+                                    <input type="text" id="youtube-url" 
+                                           placeholder="https://youtube.com/@channelname hoặc youtube.com/channel/..."
+                                           class="form-input">
+                                </div>
+                                <button class="btn btn-youtube" id="analyze-youtube-btn">
+                                    <i class="fas fa-chart-line"></i> Phân tích
+                                </button>
+                            </div>
+                            <div class="youtube-examples">
+                                <span>Ví dụ:</span>
+                                <code>youtube.com/@MrBeast</code>
+                                <code>youtube.com/c/PewDiePie</code>
+                                <code>@username</code>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Loading State -->
+                    <div class="card youtube-loading" id="youtube-loading" style="display: none;">
+                        <div class="card-body">
+                            <div class="loading-animation">
+                                <div class="spinner"></div>
+                                <p>Đang phân tích kênh...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Results Card -->
+                    <div class="card youtube-results" id="youtube-results" style="display: none;">
+                        <div class="card-header">
+                            <h2><i class="fas fa-chart-bar"></i> Kết quả phân tích</h2>
+                        </div>
+                        <div class="card-body">
+                            <!-- Channel Info -->
+                            <div class="channel-info" id="channel-info">
+                                <div class="channel-avatar">
+                                    <img id="channel-thumbnail" src="" alt="Channel Avatar">
+                                </div>
+                                <div class="channel-details">
+                                    <h3 id="channel-name">Channel Name</h3>
+                                    <p id="channel-description" class="channel-desc"></p>
+                                </div>
+                            </div>
+
+                            <!-- Stats Grid -->
+                            <div class="youtube-stats-grid">
+                                <div class="stat-card subscribers">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-users"></i>
+                                    </div>
+                                    <div class="stat-info">
+                                        <span class="stat-value" id="stat-subscribers">0</span>
+                                        <span class="stat-label">Subscribers</span>
+                                    </div>
+                                </div>
+                                <div class="stat-card views">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-eye"></i>
+                                    </div>
+                                    <div class="stat-info">
+                                        <span class="stat-value" id="stat-views">0</span>
+                                        <span class="stat-label">Total Views</span>
+                                    </div>
+                                </div>
+                                <div class="stat-card videos">
+                                    <div class="stat-icon">
+                                        <i class="fas fa-video"></i>
+                                    </div>
+                                    <div class="stat-info">
+                                        <span class="stat-value" id="stat-videos">0</span>
+                                        <span class="stat-label">Videos</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Earnings Estimate -->
+                            <div class="earnings-section">
+                                <h4><i class="fas fa-dollar-sign"></i> Ước tính thu nhập hàng tháng</h4>
+                                
+                                <div class="earnings-grid">
+                                    <div class="earnings-card low">
+                                        <span class="earnings-label">Thấp</span>
+                                        <span class="earnings-usd" id="earnings-low-usd">$0</span>
+                                        <span class="earnings-vnd" id="earnings-low-vnd">0 ₫</span>
+                                    </div>
+                                    <div class="earnings-card average">
+                                        <span class="earnings-label">Trung bình</span>
+                                        <span class="earnings-usd" id="earnings-avg-usd">$0</span>
+                                        <span class="earnings-vnd" id="earnings-avg-vnd">0 ₫</span>
+                                    </div>
+                                    <div class="earnings-card high">
+                                        <span class="earnings-label">Cao</span>
+                                        <span class="earnings-usd" id="earnings-high-usd">$0</span>
+                                        <span class="earnings-vnd" id="earnings-high-vnd">0 ₫</span>
+                                    </div>
+                                </div>
+
+                                <div class="exchange-rate-info">
+                                    <i class="fas fa-exchange-alt"></i>
+                                    Tỉ giá: <span id="exchange-rate">1 USD = 24,500 VND</span>
+                                </div>
+                            </div>
+
+                            <!-- Monthly Views Estimate -->
+                            <div class="monthly-views-section">
+                                <h4><i class="fas fa-chart-area"></i> Ước tính lượt xem hàng tháng</h4>
+                                <div class="views-range">
+                                    <div class="views-bar">
+                                        <div class="views-fill" id="views-fill"></div>
+                                    </div>
+                                    <div class="views-labels">
+                                        <span id="monthly-views-low">0</span>
+                                        <span id="monthly-views-avg">~0</span>
+                                        <span id="monthly-views-high">0</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Disclaimer -->
+                            <div class="youtube-disclaimer">
+                                <i class="fas fa-info-circle"></i>
+                                <p id="disclaimer-text">Số liệu chỉ mang tính chất ước tính dựa trên dữ liệu công khai. Thu nhập thực tế có thể khác biệt đáng kể.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Error Card -->
+                    <div class="card youtube-error" id="youtube-error" style="display: none;">
+                        <div class="card-body">
+                            <div class="error-content">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <p id="youtube-error-message">Đã xảy ra lỗi</p>
+                                <button class="btn btn-secondary" onclick="document.getElementById('youtube-error').style.display='none'">
+                                    Đóng
+                                </button>
                             </div>
                         </div>
                     </div>
