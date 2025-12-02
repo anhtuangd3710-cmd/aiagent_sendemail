@@ -66,20 +66,21 @@ class YouTubeAnalyzer:
     
     # Typical RPM ranges by region (USD per 1000 total views - what creator gets)
     # This is the most accurate metric for earnings calculation
+    # Vietnam updated: nhiều kênh VN có RPM $1-3 với niche tốt + video dài
     ACTUAL_RPM = {
-        'vietnam': {'low': 0.02, 'avg': 0.08, 'high': 0.25},      # $0.02-$0.25 per 1000 views
-        'india': {'low': 0.03, 'avg': 0.10, 'high': 0.30},
-        'indonesia': {'low': 0.03, 'avg': 0.08, 'high': 0.25},
-        'philippines': {'low': 0.03, 'avg': 0.10, 'high': 0.25},
-        'thailand': {'low': 0.04, 'avg': 0.12, 'high': 0.30},
-        'brazil': {'low': 0.05, 'avg': 0.15, 'high': 0.40},
-        'japan': {'low': 0.50, 'avg': 1.50, 'high': 3.50},
-        'germany': {'low': 0.60, 'avg': 1.80, 'high': 4.00},
-        'uk': {'low': 1.00, 'avg': 2.50, 'high': 6.00},
-        'us': {'low': 1.20, 'avg': 3.00, 'high': 8.00},
-        'canada': {'low': 0.80, 'avg': 2.20, 'high': 5.50},
-        'australia': {'low': 0.80, 'avg': 2.20, 'high': 5.50},
-        'international': {'low': 0.30, 'avg': 1.00, 'high': 3.00},
+        'vietnam': {'low': 0.30, 'avg': 1.00, 'high': 3.00},      # $0.30-$3.00 - thực tế nhiều kênh VN
+        'india': {'low': 0.15, 'avg': 0.50, 'high': 1.50},
+        'indonesia': {'low': 0.20, 'avg': 0.60, 'high': 1.80},
+        'philippines': {'low': 0.15, 'avg': 0.50, 'high': 1.50},
+        'thailand': {'low': 0.25, 'avg': 0.70, 'high': 2.00},
+        'brazil': {'low': 0.30, 'avg': 0.80, 'high': 2.50},
+        'japan': {'low': 0.80, 'avg': 2.00, 'high': 5.00},
+        'germany': {'low': 1.00, 'avg': 2.50, 'high': 6.00},
+        'uk': {'low': 1.50, 'avg': 3.50, 'high': 8.00},
+        'us': {'low': 2.00, 'avg': 4.50, 'high': 12.00},
+        'canada': {'low': 1.50, 'avg': 3.50, 'high': 8.00},
+        'australia': {'low': 1.50, 'avg': 3.50, 'high': 8.00},
+        'international': {'low': 0.50, 'avg': 1.50, 'high': 4.00},
     }
     
     # Niche keywords for detection
@@ -1611,20 +1612,21 @@ Lưu ý:
             }
         
         # Niche multiplier - affects all regions but scaled
+        # Finance/Tech/Business có thể gấp 2-3x RPM so với entertainment
         niche_multipliers = {
-            'finance': 1.8,      # Finance/crypto = highest CPM
-            'business': 1.5,
-            'tech': 1.4,
-            'education': 1.3,
-            'health': 1.35,
-            'travel': 1.25,
-            'news': 1.2,
-            'lifestyle': 1.15,
-            'food': 1.1,
-            'gaming': 1.0,       # Gaming = average
-            'entertainment': 0.95,
-            'music': 0.9,
-            'kids': 0.5,         # Limited ads
+            'finance': 2.5,      # Finance/crypto/đầu tư = highest RPM ($2-5 RPM VN)
+            'business': 2.0,     # Kinh doanh/marketing = very high
+            'tech': 1.8,         # Tech review = high RPM
+            'education': 1.5,    # Giáo dục/hướng dẫn
+            'health': 1.4,       # Sức khỏe/fitness
+            'travel': 1.3,       # Du lịch
+            'news': 1.2,         # Tin tức
+            'lifestyle': 1.1,    # Lifestyle/làm đẹp
+            'food': 1.0,         # Ẩm thực = baseline
+            'gaming': 0.9,       # Gaming = lower due to young audience
+            'entertainment': 0.85, # Giải trí/vlog = lower
+            'music': 0.8,        # Music = lower (many skip ads)
+            'kids': 0.4,         # Limited ads on kids content
             'default': 1.0
         }
         
