@@ -4371,6 +4371,58 @@ async function analyzeYouTubeChannel() {
     }
 }
 
+// Display Current Month Earnings
+function displayCurrentMonthEarnings(earnings, earningsVnd, exchangeRate) {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const currentDay = now.getDate();
+    
+    // Get days in current month
+    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    const progressPercent = (currentDay / daysInMonth) * 100;
+    
+    // Month names in Vietnamese
+    const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
+                        'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+    
+    // Update month name
+    const monthNameEl = document.getElementById('current-month-name');
+    if (monthNameEl) monthNameEl.textContent = `${monthNames[currentMonth]}/${currentYear}`;
+    
+    // Update days passed
+    const daysPassedEl = document.getElementById('days-passed');
+    if (daysPassedEl) daysPassedEl.textContent = `Đã qua ${currentDay}/${daysInMonth} ngày`;
+    
+    // Calculate current earnings (pro-rata based on days passed)
+    const avgEarningsUsd = earnings.earnings_usd?.average || 0;
+    const avgEarningsVnd = earningsVnd.average || 0;
+    
+    const earnedUsd = (avgEarningsUsd / daysInMonth) * currentDay;
+    const earnedVnd = (avgEarningsVnd / daysInMonth) * currentDay;
+    
+    // Update current earned
+    const currentEarnedUsd = document.getElementById('current-earned-usd');
+    if (currentEarnedUsd) currentEarnedUsd.textContent = `$${formatNumber(Math.round(earnedUsd * 100) / 100)}`;
+    
+    const currentEarnedVnd = document.getElementById('current-earned-vnd');
+    if (currentEarnedVnd) currentEarnedVnd.textContent = formatVND(Math.round(earnedVnd));
+    
+    // Projected earnings (same as monthly average for now)
+    const projectedUsd = document.getElementById('projected-month-usd');
+    if (projectedUsd) projectedUsd.textContent = `$${formatNumber(avgEarningsUsd)}`;
+    
+    const projectedVnd = document.getElementById('projected-month-vnd');
+    if (projectedVnd) projectedVnd.textContent = formatVND(avgEarningsVnd);
+    
+    // Update progress bar
+    const progressFill = document.getElementById('earnings-progress-fill');
+    if (progressFill) progressFill.style.width = `${progressPercent}%`;
+    
+    const progressText = document.getElementById('earnings-progress-text');
+    if (progressText) progressText.textContent = `${Math.round(progressPercent)}% tháng`;
+}
+
 // Display Monetization Status
 function displayMonetizationStatus(monetization) {
     const monetizationSection = document.getElementById('monetization-section');
@@ -4483,6 +4535,9 @@ function displayYouTubeResults(data) {
     // Monetization Status
     const monetization = data.monetization || {};
     displayMonetizationStatus(monetization);
+    
+    // Current Month Earnings
+    displayCurrentMonthEarnings(earnings, earningsVnd, data.exchange_rate || 24500);
     
     // Earnings USD
     const earningsUsd = earnings.earnings_usd || {};
