@@ -431,41 +431,80 @@ Lưu ý:
             if json_match:
                 ai_result = json.loads(json_match.group())
                 
-                # Validate and sanitize results - STRICT limits for Vietnam channels
-                audience_region = ai_result.get('audience_region', 'vietnam')
-                international_pct = int(ai_result.get('international_percent', 0))
+                # KHÔNG TIN AI về international% - tự detect dựa trên ngôn ngữ video titles
+                # Đếm số video có title tiếng Việt
+                vietnamese_videos = 0
+                total_checked = min(len(video_data), 10)
                 
-                # Set RPM limits based on audience
-                if audience_region == 'vietnam' or international_pct < 20:
-                    # Pure Vietnam audience - strict limits
+                vietnamese_chars = 'àáảãạăằắẳẵặâầấẩẫậèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ'
+                for v in video_data[:10]:
+                    title = v.get('title', '').lower()
+                    # Check if title contains Vietnamese characters
+                    if any(c in title for c in vietnamese_chars):
+                        vietnamese_videos += 1
+                    # Also check for common Vietnamese words
+                    elif any(word in title for word in ['và', 'của', 'trong', 'với', 'được', 'này', 'có', 'cho', 'là', 'tại', 'về', 'những']):
+                        vietnamese_videos += 1
+                
+                # Calculate actual international percentage
+                if total_checked > 0:
+                    vn_percent = (vietnamese_videos / total_checked) * 100
+                    actual_international_pct = max(0, min(100, 100 - vn_percent))
+                else:
+                    actual_international_pct = 0
+                
+                # Override AI's international estimate with our calculation
+                international_pct = int(actual_international_pct)
+                
+                # Determine audience region based on ACTUAL language analysis
+                if international_pct < 30:
+                    audience_region = 'vietnam'
+                elif international_pct < 60:
+                    audience_region = 'mixed'
+                else:
+                    audience_region = 'international'
+                
+                logger.info(f"Language analysis: {vietnamese_videos}/{total_checked} VN videos, {international_pct}% international")
+                
+                # Set RPM limits based on ACTUAL audience analysis - VERY STRICT
+                if audience_region == 'vietnam':
+                    # Pure Vietnam audience - STRICT limits based on real data
+                    # 4.7M views should be ~$3,500-4,500
+                    max_rpm_low = 0.60
+                    max_rpm_avg = 0.85
+                    max_rpm_high = 1.20
+                elif audience_region == 'mixed':
+                    # Mixed audience (30-60% international)
                     max_rpm_low = 0.80
-                    max_rpm_avg = 1.20
-                    max_rpm_high = 1.80
-                elif international_pct < 50:
-                    # Mixed audience
+                    max_rpm_avg = 1.30
+                    max_rpm_high = 2.00
+                else:
+                    # Mostly international (>60%)
                     max_rpm_low = 1.50
                     max_rpm_avg = 2.50
                     max_rpm_high = 4.00
-                else:
-                    # Mostly international
-                    max_rpm_low = 3.00
-                    max_rpm_avg = 5.00
-                    max_rpm_high = 8.00
                 
-                # Apply limits
-                rpm_low = max(0.10, min(max_rpm_low, float(ai_result.get('rpm_low', 0.5))))
-                rpm_avg = max(rpm_low, min(max_rpm_avg, float(ai_result.get('rpm_avg', 0.8))))
-                rpm_high = max(rpm_avg, min(max_rpm_high, float(ai_result.get('rpm_high', 1.2))))
+                # Apply STRICT limits - ignore AI's RPM if too high
+                rpm_low = max(0.20, min(max_rpm_low, float(ai_result.get('rpm_low', 0.5))))
+                rpm_avg = max(rpm_low + 0.1, min(max_rpm_avg, float(ai_result.get('rpm_avg', 0.7))))
+                rpm_high = max(rpm_avg + 0.1, min(max_rpm_high, float(ai_result.get('rpm_high', 1.0))))
                 
-                # Recalculate earnings based on validated RPM
-                est_views = int(ai_result.get('estimated_monthly_views', estimated_monthly))
+                # Use our estimated monthly views, not AI's
+                est_views = int(estimated_monthly)
+                
+                # Recalculate earnings with validated RPM
+                earnings_low = round(est_views * rpm_low / 1000, 2)
+                earnings_avg = round(est_views * rpm_avg / 1000, 2)
+                earnings_high = round(est_views * rpm_high / 1000, 2)
+                
+                logger.info(f"Final RPM: ${rpm_low}-${rpm_avg}-${rpm_high}, Est earnings: ${earnings_avg}")
                 
                 result = {
                     'success': True,
                     'niche': ai_result.get('niche', 'entertainment'),
                     'niche_vi': ai_result.get('niche_vi', 'Giải trí'),
-                    'audience_region': ai_result.get('audience_region', 'vietnam'),
-                    'international_percent': int(ai_result.get('international_percent', 0)),
+                    'audience_region': audience_region,  # Use our calculated region
+                    'international_percent': international_pct,  # Use our calculated %
                     'rpm': {
                         'low': round(rpm_low, 2),
                         'avg': round(rpm_avg, 2),
