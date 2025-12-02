@@ -656,26 +656,70 @@ Lưu ý:
     
     # ==================== Get Recent Videos ====================
     
-    def get_recent_videos(self, channel_id: str, max_results: int = 50) -> List[Dict]:
-        """Get recent videos from channel to calculate actual monthly views (default 50 - ~2 months for daily uploaders)"""
+    def _get_payment_period_dates(self) -> tuple:
+        """
+        Get YouTube payment period dates.
+        YouTube payment cycle: Day 3 of previous month → Day 3 of current month
+        
+        Returns: (start_date, end_date) as datetime objects
+        """
+        from datetime import timedelta
+        from dateutil.relativedelta import relativedelta
+        
+        now = datetime.now()
+        current_day = now.day
+        
+        # If we're on day 1-2, the current earning period is for previous month
+        # If we're on day 3+, the current earning period is for this month
+        if current_day < 3:
+            # Day 1-2: Period is from day 3 two months ago to day 3 last month
+            end_date = now.replace(day=3) - relativedelta(months=1)
+            start_date = end_date - relativedelta(months=1)
+        else:
+            # Day 3+: Period is from day 3 last month to day 3 this month
+            end_date = now.replace(day=3)
+            start_date = end_date - relativedelta(months=1)
+        
+        return start_date, end_date
+    
+    def get_recent_videos(self, channel_id: str, max_results: int = None) -> List[Dict]:
+        """
+        Get videos from YouTube payment period (day 3 last month → day 3 this month).
+        Uses pagination to get ALL videos in the period, not limited to 50.
+        
+        Args:
+            channel_id: YouTube channel ID
+            max_results: Optional limit. If None, gets all videos in payment period.
+        """
         videos = []
         
-        # Method 1: YouTube Data API
+        # Method 1: YouTube Data API with pagination
         if self.api_key:
             videos = self._get_videos_via_api(channel_id, max_results)
         
         # Method 2: Scrape videos page if API not available or failed
         if not videos:
-            videos = self._scrape_recent_videos(channel_id, max_results)
+            videos = self._scrape_recent_videos(channel_id, max_results or 50)
         
         return videos
     
-    def _get_videos_via_api(self, channel_id: str, max_results: int = 50) -> List[Dict]:
-        """Get videos using YouTube Data API (max 50 per request)"""
+    def _get_videos_via_api(self, channel_id: str, max_results: int = None) -> List[Dict]:
+        """
+        Get videos using YouTube Data API with pagination.
+        Fetches ALL videos in the payment period (day 3 → day 3).
+        
+        Args:
+            channel_id: YouTube channel ID
+            max_results: Optional limit. If None, gets all videos in payment period.
+        """
         if not self.api_key:
             return []
         
         try:
+            # Get payment period dates
+            start_date, end_date = self._get_payment_period_dates()
+            logger.info(f"Payment period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+            
             # First, get uploads playlist ID
             params = {
                 'part': 'contentDetails',
@@ -701,71 +745,149 @@ Lưu ý:
             if not uploads_playlist:
                 return []
             
-            # Get videos from uploads playlist
-            params = {
-                'part': 'snippet,contentDetails',
-                'playlistId': uploads_playlist,
-                'maxResults': min(max_results, 50),
-                'key': self.api_key
-            }
+            # Get videos from uploads playlist with PAGINATION
+            all_video_ids = []
+            next_page_token = None
+            max_pages = 10  # Safety limit: 10 pages × 50 = 500 videos max
+            page_count = 0
+            reached_start_date = False
             
-            response = self.session.get(
-                f"{self.YOUTUBE_API_BASE}/playlistItems",
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code != 200:
-                return []
-            
-            data = response.json()
-            video_ids = []
-            
-            for item in data.get('items', []):
-                video_id = item.get('contentDetails', {}).get('videoId', '')
-                if video_id:
-                    video_ids.append(video_id)
-            
-            if not video_ids:
-                return []
-            
-            # Get video statistics
-            params = {
-                'part': 'snippet,statistics,contentDetails',
-                'id': ','.join(video_ids[:50]),
-                'key': self.api_key
-            }
-            
-            response = self.session.get(
-                f"{self.YOUTUBE_API_BASE}/videos",
-                params=params,
-                timeout=15
-            )
-            
-            if response.status_code != 200:
-                return []
-            
-            data = response.json()
-            videos = []
-            
-            for item in data.get('items', []):
-                snippet = item.get('snippet', {})
-                stats = item.get('statistics', {})
+            while page_count < max_pages and not reached_start_date:
+                params = {
+                    'part': 'snippet,contentDetails',
+                    'playlistId': uploads_playlist,
+                    'maxResults': 50,  # Max per request
+                    'key': self.api_key
+                }
                 
-                videos.append({
-                    'video_id': item.get('id', ''),
-                    'title': snippet.get('title', ''),
-                    'published_at': snippet.get('publishedAt', ''),
-                    'view_count': int(stats.get('viewCount', 0)),
-                    'like_count': int(stats.get('likeCount', 0)),
-                    'comment_count': int(stats.get('commentCount', 0)),
-                })
+                if next_page_token:
+                    params['pageToken'] = next_page_token
+                
+                response = self.session.get(
+                    f"{self.YOUTUBE_API_BASE}/playlistItems",
+                    params=params,
+                    timeout=15
+                )
+                
+                if response.status_code != 200:
+                    break
+                
+                data = response.json()
+                
+                for item in data.get('items', []):
+                    video_id = item.get('contentDetails', {}).get('videoId', '')
+                    published_at = item.get('snippet', {}).get('publishedAt', '')
+                    
+                    if video_id and published_at:
+                        # Parse publish date
+                        try:
+                            pub_date = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                            pub_date = pub_date.replace(tzinfo=None)  # Remove timezone for comparison
+                            
+                            # Check if video is within payment period
+                            if pub_date >= start_date:
+                                all_video_ids.append(video_id)
+                            else:
+                                # Video is older than start_date, stop fetching
+                                reached_start_date = True
+                                break
+                        except:
+                            all_video_ids.append(video_id)  # Include if can't parse date
+                
+                # Check for next page
+                next_page_token = data.get('nextPageToken')
+                if not next_page_token:
+                    break
+                
+                page_count += 1
+                
+                # Apply max_results limit if specified
+                if max_results and len(all_video_ids) >= max_results:
+                    all_video_ids = all_video_ids[:max_results]
+                    break
             
-            return videos
+            logger.info(f"Found {len(all_video_ids)} videos in payment period (pages fetched: {page_count + 1})")
+            
+            if not all_video_ids:
+                return []
+            
+            # Get video statistics in batches of 50
+            all_videos = []
+            for i in range(0, len(all_video_ids), 50):
+                batch_ids = all_video_ids[i:i+50]
+                
+                params = {
+                    'part': 'snippet,statistics,contentDetails',
+                    'id': ','.join(batch_ids),
+                    'key': self.api_key
+                }
+                
+                response = self.session.get(
+                    f"{self.YOUTUBE_API_BASE}/videos",
+                    params=params,
+                    timeout=15
+                )
+                
+                if response.status_code != 200:
+                    continue
+                
+                data = response.json()
+                
+                for item in data.get('items', []):
+                    snippet = item.get('snippet', {})
+                    stats = item.get('statistics', {})
+                    content_details = item.get('contentDetails', {})
+                    
+                    # Parse duration to minutes
+                    duration_str = content_details.get('duration', 'PT0S')
+                    duration_mins = self._parse_duration_to_minutes(duration_str)
+                    
+                    all_videos.append({
+                        'video_id': item.get('id', ''),
+                        'title': snippet.get('title', ''),
+                        'published_at': snippet.get('publishedAt', ''),
+                        'view_count': int(stats.get('viewCount', 0)),
+                        'like_count': int(stats.get('likeCount', 0)),
+                        'comment_count': int(stats.get('commentCount', 0)),
+                        'duration_minutes': duration_mins,
+                    })
+            
+            return all_videos
             
         except Exception as e:
             logger.error(f"Error getting videos via API: {e}")
             return []
+    
+    def _parse_duration_to_minutes(self, duration_str: str) -> float:
+        """Parse ISO 8601 duration to minutes (e.g., PT1H30M15S -> 90.25)"""
+        import re
+        
+        if not duration_str:
+            return 0
+        
+        # Remove PT prefix
+        duration_str = duration_str.replace('PT', '').replace('P', '')
+        
+        hours = 0
+        minutes = 0
+        seconds = 0
+        
+        # Extract hours
+        h_match = re.search(r'(\d+)H', duration_str)
+        if h_match:
+            hours = int(h_match.group(1))
+        
+        # Extract minutes
+        m_match = re.search(r'(\d+)M', duration_str)
+        if m_match:
+            minutes = int(m_match.group(1))
+        
+        # Extract seconds
+        s_match = re.search(r'(\d+)S', duration_str)
+        if s_match:
+            seconds = int(s_match.group(1))
+        
+        return hours * 60 + minutes + seconds / 60
     
     def _scrape_recent_videos(self, channel_id: str, max_results: int = 50) -> List[Dict]:
         """Scrape recent videos from channel videos page"""
@@ -1945,12 +2067,13 @@ Lưu ý:
         if not channel_id:
             channel_id = self.resolve_to_channel_id(identifier)
         
-        # Get recent videos to calculate actual monthly views (50 videos for better accuracy)
+        # Get ALL videos in payment period (day 3 last month → day 3 this month)
+        # Uses pagination to fetch all videos, not limited to 50
         recent_videos = []
         if channel_id:
-            logger.info(f"Getting recent videos for channel: {channel_id}")
-            recent_videos = self.get_recent_videos(channel_id, max_results=50)
-            logger.info(f"Found {len(recent_videos)} recent videos")
+            logger.info(f"Getting videos in payment period for channel: {channel_id}")
+            recent_videos = self.get_recent_videos(channel_id)  # No limit - get all in period
+            logger.info(f"Found {len(recent_videos)} videos in payment period")
         
         # Calculate monthly views based on actual data
         monthly_views_data = self.calculate_monthly_views(
