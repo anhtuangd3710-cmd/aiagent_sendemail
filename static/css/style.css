@@ -5755,7 +5755,14 @@ select:focus-visible {
 }
 
 .monetization-badge i {
-    font-size: 24px;
+    font-size: 20px;
+}
+
+.monetization-badge .confidence {
+    font-size: 13px;
+    font-weight: normal;
+    opacity: 0.7;
+    margin-left: 8px;
 }
 
 .monetization-badge.monetized {
@@ -5786,52 +5793,52 @@ select:focus-visible {
     font-size: 13px;
     color: var(--text-secondary);
     line-height: 1.5;
+    margin-bottom: 16px;
 }
 
 .monetization-requirements {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    margin-bottom: 12px;
+    gap: 10px;
+    margin-bottom: 16px;
 }
 
 .requirement-item {
-    display: flex;
+    display: grid;
+    grid-template-columns: 1fr auto auto;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 12px;
+    padding: 12px 16px;
     background: var(--bg-secondary);
     border-radius: 8px;
 }
 
-.req-icon {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(var(--primary-rgb), 0.1);
-    border-radius: 8px;
-    color: var(--primary-color);
+.req-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
-.req-text {
-    flex: 1;
-    font-size: 13px;
+.req-value {
+    font-size: 14px;
     color: var(--text-primary);
-}
-
-.req-text span {
     font-weight: 600;
+    font-family: 'Roboto Mono', monospace;
 }
 
 .req-status {
-    width: 24px;
-    height: 24px;
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    border-radius: 50%;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.req-status i {
+    font-size: 12px;
 }
 
 .req-status.met {

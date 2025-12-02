@@ -4436,7 +4436,7 @@ function displayMonetizationStatus(monetization) {
             <span class="req-label">Giờ xem (12 tháng)</span>
             <span class="req-value">${formatNumber(watchReq.estimated)} / ${formatNumber(watchReq.required)}</span>
             <span class="req-status ${isMet ? 'met' : 'not-met'}">
-                <i class="fas fa-${isMet ? 'check' : 'times'}"></i> ${isMet ? 'Đạt (ước tính)' : 'Chưa đạt (ước tính)'}
+                <i class="fas fa-${isMet ? 'check' : 'times'}"></i> ${isMet ? 'Đạt' : 'Chưa đạt'}
             </span>
         `;
     }
