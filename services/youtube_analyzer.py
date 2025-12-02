@@ -28,38 +28,58 @@ class YouTubeAnalyzer:
     """Comprehensive YouTube channel analyzer using multiple data sources"""
     
     # CPM rates by region/niche (USD per 1000 monetized views)
-    # Updated with more accurate 2024-2025 data
+    # REALISTIC 2024-2025 data based on actual creator reports
+    # Note: These are CPM (cost per 1000 monetized views), not RPM
     CPM_RATES = {
-        # By Niche (USD audience)
-        'finance': {'low': 8.0, 'avg': 15.0, 'high': 30.0},      # Finance, investing, crypto
-        'business': {'low': 6.0, 'avg': 12.0, 'high': 25.0},     # Business, entrepreneurship
-        'tech': {'low': 4.0, 'avg': 8.0, 'high': 15.0},          # Technology, software
-        'education': {'low': 3.0, 'avg': 6.0, 'high': 12.0},     # Educational content
-        'health': {'low': 3.0, 'avg': 7.0, 'high': 15.0},        # Health, fitness
-        'gaming': {'low': 1.5, 'avg': 3.5, 'high': 6.0},         # Gaming
-        'entertainment': {'low': 1.0, 'avg': 3.0, 'high': 5.0},  # Entertainment, vlogs
-        'music': {'low': 0.8, 'avg': 2.0, 'high': 4.0},          # Music
-        'lifestyle': {'low': 1.5, 'avg': 3.5, 'high': 7.0},      # Lifestyle, beauty
-        'food': {'low': 1.5, 'avg': 3.5, 'high': 6.0},           # Food, cooking
-        'travel': {'low': 2.0, 'avg': 4.0, 'high': 8.0},         # Travel
-        'news': {'low': 2.0, 'avg': 4.5, 'high': 8.0},           # News, politics
+        # By Niche (primarily for US/Tier 1 audience)
+        'finance': {'low': 12.0, 'avg': 20.0, 'high': 40.0},     # Finance, investing, crypto
+        'business': {'low': 8.0, 'avg': 15.0, 'high': 30.0},     # Business, entrepreneurship
+        'tech': {'low': 5.0, 'avg': 10.0, 'high': 20.0},         # Technology, software
+        'education': {'low': 4.0, 'avg': 8.0, 'high': 15.0},     # Educational content
+        'health': {'low': 4.0, 'avg': 9.0, 'high': 18.0},        # Health, fitness
+        'gaming': {'low': 2.0, 'avg': 4.0, 'high': 8.0},         # Gaming
+        'entertainment': {'low': 1.5, 'avg': 3.5, 'high': 7.0},  # Entertainment, vlogs
+        'music': {'low': 1.0, 'avg': 2.5, 'high': 5.0},          # Music
+        'lifestyle': {'low': 2.0, 'avg': 4.5, 'high': 9.0},      # Lifestyle, beauty
+        'food': {'low': 2.0, 'avg': 4.0, 'high': 8.0},           # Food, cooking
+        'travel': {'low': 3.0, 'avg': 6.0, 'high': 12.0},        # Travel
+        'news': {'low': 3.0, 'avg': 6.0, 'high': 12.0},          # News, politics
         'kids': {'low': 0.5, 'avg': 1.5, 'high': 3.0},           # Kids content (limited ads)
-        'default': {'low': 1.5, 'avg': 4.0, 'high': 8.0},        # Default/unknown
+        'default': {'low': 2.0, 'avg': 5.0, 'high': 10.0},       # Default/unknown
         
-        # By Country/Region (for audience location)
-        'us': {'low': 3.0, 'avg': 7.0, 'high': 15.0},            # USA
-        'uk': {'low': 2.5, 'avg': 6.0, 'high': 12.0},            # UK
-        'canada': {'low': 2.5, 'avg': 5.5, 'high': 11.0},        # Canada
-        'australia': {'low': 2.5, 'avg': 5.5, 'high': 11.0},     # Australia
-        'germany': {'low': 2.0, 'avg': 5.0, 'high': 10.0},       # Germany
-        'japan': {'low': 1.5, 'avg': 4.0, 'high': 8.0},          # Japan
-        'india': {'low': 0.3, 'avg': 0.8, 'high': 2.0},          # India
-        'brazil': {'low': 0.4, 'avg': 1.0, 'high': 2.5},         # Brazil
-        'indonesia': {'low': 0.3, 'avg': 0.7, 'high': 1.5},      # Indonesia
-        'vietnam': {'low': 0.2, 'avg': 0.6, 'high': 1.5},        # Vietnam
-        'philippines': {'low': 0.3, 'avg': 0.7, 'high': 1.5},    # Philippines
-        'thailand': {'low': 0.3, 'avg': 0.8, 'high': 1.8},       # Thailand
-        'international': {'low': 1.0, 'avg': 3.0, 'high': 6.0},  # Mixed international
+        # By Country/Region - REALISTIC RPM (what creators actually receive per 1000 views)
+        # RPM already factors in: monetized views %, YouTube's 45% cut
+        'us': {'low': 2.0, 'avg': 4.5, 'high': 10.0},            # USA - actual RPM
+        'uk': {'low': 1.8, 'avg': 4.0, 'high': 8.0},             # UK
+        'canada': {'low': 1.5, 'avg': 3.5, 'high': 7.0},         # Canada
+        'australia': {'low': 1.5, 'avg': 3.5, 'high': 7.0},      # Australia
+        'germany': {'low': 1.2, 'avg': 3.0, 'high': 6.0},        # Germany
+        'japan': {'low': 1.0, 'avg': 2.5, 'high': 5.0},          # Japan
+        'india': {'low': 0.05, 'avg': 0.15, 'high': 0.40},       # India - very low
+        'brazil': {'low': 0.08, 'avg': 0.20, 'high': 0.50},      # Brazil
+        'indonesia': {'low': 0.05, 'avg': 0.12, 'high': 0.30},   # Indonesia
+        'vietnam': {'low': 0.03, 'avg': 0.10, 'high': 0.30},     # Vietnam - REALISTIC
+        'philippines': {'low': 0.05, 'avg': 0.12, 'high': 0.30}, # Philippines
+        'thailand': {'low': 0.06, 'avg': 0.15, 'high': 0.35},    # Thailand
+        'international': {'low': 0.50, 'avg': 1.50, 'high': 4.0},# Mixed international
+    }
+    
+    # Typical RPM ranges by region (USD per 1000 total views - what creator gets)
+    # This is the most accurate metric for earnings calculation
+    ACTUAL_RPM = {
+        'vietnam': {'low': 0.02, 'avg': 0.08, 'high': 0.25},      # $0.02-$0.25 per 1000 views
+        'india': {'low': 0.03, 'avg': 0.10, 'high': 0.30},
+        'indonesia': {'low': 0.03, 'avg': 0.08, 'high': 0.25},
+        'philippines': {'low': 0.03, 'avg': 0.10, 'high': 0.25},
+        'thailand': {'low': 0.04, 'avg': 0.12, 'high': 0.30},
+        'brazil': {'low': 0.05, 'avg': 0.15, 'high': 0.40},
+        'japan': {'low': 0.50, 'avg': 1.50, 'high': 3.50},
+        'germany': {'low': 0.60, 'avg': 1.80, 'high': 4.00},
+        'uk': {'low': 1.00, 'avg': 2.50, 'high': 6.00},
+        'us': {'low': 1.20, 'avg': 3.00, 'high': 8.00},
+        'canada': {'low': 0.80, 'avg': 2.20, 'high': 5.50},
+        'australia': {'low': 0.80, 'avg': 2.20, 'high': 5.50},
+        'international': {'low': 0.30, 'avg': 1.00, 'high': 3.00},
     }
     
     # Niche keywords for detection
@@ -1450,96 +1470,134 @@ Lưu ý:
         # Default to international
         return 'international'
     
-    def calculate_rpm(self, niche: str, region: str, engagement_rate: float = 0.05) -> Dict:
+    def calculate_rpm(self, niche: str, region: str, engagement_rate: float = 0.05, avg_video_length_mins: float = 10) -> Dict:
         """
-        Calculate RPM (Revenue Per Mille) more accurately.
-        RPM = (Estimated earnings / Views) × 1000
+        Calculate RPM (Revenue Per Mille) using ACTUAL RPM data.
         
-        Factors affecting RPM:
-        1. Channel niche (finance > tech > gaming > entertainment)
-        2. Audience geography (US/UK/Canada > EU > Asia > SEA)
-        3. Engagement rate (higher = better ad rates)
-        4. Video length (8+ mins = mid-roll ads = higher RPM)
-        5. Seasonality (Q4 > Q1)
+        RPM = What creator actually receives per 1000 TOTAL views
+        (Already includes: monetized views %, YouTube's 45% cut, ad rates)
+        
+        Key factors:
+        1. Audience geography (most important - 90% of variation)
+        2. Channel niche (adds 10-30% for premium niches in Tier 1 countries)
+        3. Video length (8+ mins = mid-roll ads = +20-40% RPM)
+        4. Engagement rate (higher = slightly better fill rate)
+        5. Seasonality (Q4 = +10-20%)
         """
-        # Get base CPM from niche
-        niche_cpm = self.CPM_RATES.get(niche, self.CPM_RATES['default'])
+        # Use ACTUAL RPM data (what creators really get)
+        base_rpm = self.ACTUAL_RPM.get(region, self.ACTUAL_RPM['international'])
         
-        # Get region multiplier
-        region_cpm = self.CPM_RATES.get(region, self.CPM_RATES['international'])
+        # Start with base RPM for the region
+        rpm = {
+            'low': base_rpm['low'],
+            'avg': base_rpm['avg'],
+            'high': base_rpm['high']
+        }
         
-        # Blend niche and region (region has more impact on actual earnings)
-        # For Vietnamese creators with Vietnamese audience, region CPM dominates
-        if region == 'vietnam':
-            # Vietnamese audience = low CPM regardless of niche
-            blended_cpm = {
-                'low': region_cpm['low'],
-                'avg': (region_cpm['avg'] * 0.7 + niche_cpm['avg'] * 0.3 * 0.3),  # Niche bonus reduced
-                'high': (region_cpm['high'] * 0.7 + niche_cpm['high'] * 0.3 * 0.3)
-            }
-        elif region in ['india', 'indonesia', 'philippines', 'thailand', 'brazil']:
-            # Low CPM regions
-            blended_cpm = {
-                'low': region_cpm['low'],
-                'avg': (region_cpm['avg'] * 0.6 + niche_cpm['avg'] * 0.4 * 0.4),
-                'high': (region_cpm['high'] * 0.6 + niche_cpm['high'] * 0.4 * 0.4)
-            }
+        # Niche multiplier - only significant for Tier 1 countries
+        niche_multipliers = {
+            'finance': 1.5,
+            'business': 1.4,
+            'tech': 1.3,
+            'education': 1.2,
+            'health': 1.25,
+            'travel': 1.15,
+            'news': 1.1,
+            'lifestyle': 1.1,
+            'food': 1.05,
+            'gaming': 0.9,
+            'entertainment': 0.95,
+            'music': 0.85,
+            'kids': 0.6,  # Limited ads
+            'default': 1.0
+        }
+        
+        niche_mult = niche_multipliers.get(niche, 1.0)
+        
+        # Niche only affects Tier 1 countries significantly
+        if region in ['us', 'uk', 'canada', 'australia', 'germany']:
+            rpm['avg'] *= niche_mult
+            rpm['high'] *= niche_mult
+        elif region in ['japan']:
+            rpm['avg'] *= (1 + (niche_mult - 1) * 0.5)  # Half effect
+            rpm['high'] *= (1 + (niche_mult - 1) * 0.5)
+        # For low CPM regions (VN, India, etc.), niche has minimal effect
         else:
-            # Higher CPM regions - niche matters more
-            blended_cpm = {
-                'low': (region_cpm['low'] * 0.5 + niche_cpm['low'] * 0.5),
-                'avg': (region_cpm['avg'] * 0.5 + niche_cpm['avg'] * 0.5),
-                'high': (region_cpm['high'] * 0.5 + niche_cpm['high'] * 0.5)
-            }
+            rpm['avg'] *= (1 + (niche_mult - 1) * 0.1)  # 10% of niche effect
+            rpm['high'] *= (1 + (niche_mult - 1) * 0.15)
         
-        # Engagement bonus (higher engagement = premium ad rates)
-        engagement_multiplier = 1.0
-        if engagement_rate >= 0.10:  # 10%+ engagement
-            engagement_multiplier = 1.2
-        elif engagement_rate >= 0.05:  # 5%+ engagement
+        # Video length bonus (8+ mins = mid-roll ads)
+        if avg_video_length_mins >= 8:
+            length_multiplier = 1.3  # +30% for mid-roll eligible
+        elif avg_video_length_mins >= 5:
+            length_multiplier = 1.1  # Slightly better
+        else:
+            length_multiplier = 1.0  # Short videos - only pre-roll
+        
+        rpm['avg'] *= length_multiplier
+        rpm['high'] *= length_multiplier
+        
+        # Engagement bonus (very small effect)
+        if engagement_rate >= 0.08:  # 8%+ engagement
             engagement_multiplier = 1.1
+        elif engagement_rate >= 0.04:  # 4%+ engagement
+            engagement_multiplier = 1.05
         elif engagement_rate < 0.02:  # <2% engagement
-            engagement_multiplier = 0.9
+            engagement_multiplier = 0.95
+        else:
+            engagement_multiplier = 1.0
+        
+        rpm['avg'] *= engagement_multiplier
+        rpm['high'] *= engagement_multiplier
         
         # Seasonality adjustment (Q4 = higher ad spend)
         month = datetime.now().month
-        if month in [10, 11, 12]:  # Q4
-            seasonality_multiplier = 1.15
-        elif month in [1, 2]:  # Q1 start (post-holiday)
-            seasonality_multiplier = 0.85
+        if month in [11, 12]:  # Nov-Dec (Black Friday, Christmas)
+            seasonality_multiplier = 1.20
+        elif month == 10:  # October
+            seasonality_multiplier = 1.10
+        elif month in [1, 2]:  # Jan-Feb (post-holiday slump)
+            seasonality_multiplier = 0.80
+        elif month in [6, 7, 8]:  # Summer (slightly lower)
+            seasonality_multiplier = 0.95
         else:
             seasonality_multiplier = 1.0
         
-        # Apply multipliers
-        final_cpm = {
-            'low': round(blended_cpm['low'] * engagement_multiplier * seasonality_multiplier, 2),
-            'avg': round(blended_cpm['avg'] * engagement_multiplier * seasonality_multiplier, 2),
-            'high': round(blended_cpm['high'] * engagement_multiplier * seasonality_multiplier, 2)
+        rpm['low'] *= seasonality_multiplier
+        rpm['avg'] *= seasonality_multiplier
+        rpm['high'] *= seasonality_multiplier
+        
+        # Round values
+        rpm = {
+            'low': round(rpm['low'], 3),
+            'avg': round(rpm['avg'], 3),
+            'high': round(rpm['high'], 3)
         }
         
-        # Calculate RPM (CPM × monetization rate)
-        # RPM is what creator actually gets after YouTube's 45% cut and non-monetized views
-        monetization_rate = 0.45  # ~45% of views show ads on average
-        youtube_share = 0.55     # Creator gets 55% of ad revenue
-        
-        rpm = {
-            'low': round(final_cpm['low'] * monetization_rate * youtube_share, 2),
-            'avg': round(final_cpm['avg'] * monetization_rate * youtube_share, 2),
-            'high': round(final_cpm['high'] * monetization_rate * youtube_share, 2)
+        # CPM is roughly RPM / 0.25 (since ~25% of views are monetized at creator's rate)
+        # This is just for display purposes
+        estimated_cpm = {
+            'low': round(rpm['low'] / 0.20, 2),
+            'avg': round(rpm['avg'] / 0.25, 2),
+            'high': round(rpm['high'] / 0.30, 2)
         }
         
         return {
-            'cpm': final_cpm,
+            'cpm': estimated_cpm,
             'rpm': rpm,
             'niche': niche,
             'region': region,
             'engagement_multiplier': engagement_multiplier,
             'seasonality_multiplier': seasonality_multiplier,
-            'monetization_rate': monetization_rate
+            'video_length_multiplier': length_multiplier,
+            'monetization_rate': 0.25  # Approximate % of views that generate revenue
         }
     
     def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None, videos: List[Dict] = None) -> Dict:
-        """Estimate monthly earnings based on channel stats and actual monthly views"""
+        """
+        Estimate monthly earnings based on channel stats and actual monthly views.
+        Uses ACTUAL RPM data for more accurate estimates.
+        """
         subscriber_count = stats.get('subscriber_count', 0)
         view_count = stats.get('view_count', 0)
         video_count = stats.get('video_count', 0)
@@ -1548,16 +1606,23 @@ Lưu ý:
         niche = self.detect_channel_niche(stats, videos)
         region = self.get_audience_region(stats)
         
-        # Calculate engagement rate
-        engagement_rate = 0.05  # default 5%
+        # Calculate engagement rate (likes/views)
+        engagement_rate = 0.04  # default 4%
+        avg_video_length = 10  # default 10 minutes
+        
         if videos:
             total_views = sum(v.get('view_count', 0) for v in videos[:10])
             total_likes = sum(v.get('like_count', 0) for v in videos[:10])
             if total_views > 0:
                 engagement_rate = total_likes / total_views
+            
+            # Try to estimate average video length from duration if available
+            durations = [v.get('duration_minutes', 0) for v in videos[:10] if v.get('duration_minutes', 0) > 0]
+            if durations:
+                avg_video_length = sum(durations) / len(durations)
         
-        # Get RPM calculation
-        rpm_data = self.calculate_rpm(niche, region, engagement_rate)
+        # Get RPM calculation with all factors
+        rpm_data = self.calculate_rpm(niche, region, engagement_rate, avg_video_length)
         
         # Get estimated monthly views from actual data
         if monthly_views_data and monthly_views_data.get('estimated_monthly_views', 0) > 0:
@@ -1574,10 +1639,20 @@ Lưu ý:
                 estimated_monthly_views = 0
             calculation_method = 'fallback_estimate'
         
-        # Calculate earnings using RPM
+        # Calculate earnings using ACTUAL RPM (Revenue Per Mille)
+        # Formula: Monthly Views × RPM ÷ 1000
         earnings_low = (estimated_monthly_views * rpm_data['rpm']['low']) / 1000
         earnings_avg = (estimated_monthly_views * rpm_data['rpm']['avg']) / 1000
         earnings_high = (estimated_monthly_views * rpm_data['rpm']['high']) / 1000
+        
+        # Add some context about the estimate
+        region_note = ""
+        if region == 'vietnam':
+            region_note = "Khán giả VN có CPM rất thấp ($0.1-0.5 CPM, ~$0.02-0.10 RPM thực tế)"
+        elif region in ['india', 'indonesia', 'philippines']:
+            region_note = "Khán giả SEA/South Asia có CPM thấp"
+        elif region in ['us', 'uk', 'canada', 'australia']:
+            region_note = "Khán giả Tier 1 có CPM cao"
         
         return {
             'estimated_monthly_views': estimated_monthly_views,
@@ -1590,14 +1665,16 @@ Lưu ý:
             'rpm_range': rpm_data['rpm'],
             'cpm_region': self._get_region_vietnamese(region),
             'monetization_rate': rpm_data['monetization_rate'],
-            'engagement_rate': round(engagement_rate * 100, 1),
+            'engagement_rate': round(engagement_rate * 100, 2),
             'seasonality': rpm_data['seasonality_multiplier'],
+            'video_length_bonus': rpm_data.get('video_length_multiplier', 1.0),
+            'region_note': region_note,
             'earnings_usd': {
                 'low': round(earnings_low, 2),
                 'average': round(earnings_avg, 2),
                 'high': round(earnings_high, 2)
             },
-            'earnings_formula': 'Views × RPM ÷ 1000 (RPM = CPM × 45% ads × 55% creator share)'
+            'earnings_formula': 'Thu nhập = Views × RPM ÷ 1000 (RPM là số tiền thực nhận/1000 views)'
         }
     
     def _get_niche_vietnamese(self, niche: str) -> str:
