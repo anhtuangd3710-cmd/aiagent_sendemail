@@ -1023,9 +1023,6 @@ Lưu ý:
                 result['calculation_method'] = 'fallback'
         
         return result
-            result['avg_views_per_video'] = int(total_views_analyzed / len(videos))
-        
-        return result
     
     # ==================== Web Scraping ====================
     
