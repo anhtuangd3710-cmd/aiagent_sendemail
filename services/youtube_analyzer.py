@@ -1675,37 +1675,14 @@ Lưu ý:
         rpm['avg'] *= length_multiplier
         rpm['high'] *= length_multiplier
         
-        # Engagement bonus
-        if engagement_rate >= 0.10:  # 10%+ engagement - excellent
-            engagement_multiplier = 1.15
-        elif engagement_rate >= 0.06:  # 6%+ engagement
-            engagement_multiplier = 1.10
-        elif engagement_rate >= 0.03:  # 3%+ engagement
-            engagement_multiplier = 1.05
-        elif engagement_rate < 0.01:  # <1% engagement
-            engagement_multiplier = 0.90
-        else:
-            engagement_multiplier = 1.0
+        # Engagement bonus - TẮt
+        engagement_multiplier = 1.0
         
         rpm['avg'] *= engagement_multiplier
         rpm['high'] *= engagement_multiplier
         
-        # Seasonality adjustment (Q4 = higher ad spend)
-        month = datetime.now().month
-        if month == 12:  # December (Christmas)
-            seasonality_multiplier = 1.30
-        elif month == 11:  # November (Black Friday)
-            seasonality_multiplier = 1.25
-        elif month == 10:  # October
-            seasonality_multiplier = 1.10
-        elif month == 1:  # January (worst month)
-            seasonality_multiplier = 0.70
-        elif month == 2:  # February
-            seasonality_multiplier = 0.80
-        elif month in [6, 7, 8]:  # Summer
-            seasonality_multiplier = 0.95
-        else:
-            seasonality_multiplier = 1.0
+        # Seasonality adjustment - TẮt (RPM đã đủ thực tế)
+        seasonality_multiplier = 1.0
         
         rpm['low'] *= seasonality_multiplier
         rpm['avg'] *= seasonality_multiplier
