@@ -13,7 +13,7 @@ import json
 import logging
 import requests
 from typing import Dict, Optional, List, Tuple
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import quote, urlparse, parse_qs
 import os
 
@@ -257,6 +257,7 @@ class YouTubeAnalyzer:
         snippet = item.get('snippet', {})
         stats = item.get('statistics', {})
         branding = item.get('brandingSettings', {}).get('channel', {})
+        content_details = item.get('contentDetails', {})
         
         return {
             'channel_id': item.get('id', ''),
@@ -274,8 +275,351 @@ class YouTubeAnalyzer:
             'created_at': snippet.get('publishedAt', ''),
             'country': snippet.get('country', branding.get('country', 'Unknown')),
             'keywords': branding.get('keywords', ''),
+            'uploads_playlist': content_details.get('relatedPlaylists', {}).get('uploads', ''),
             'source': 'youtube_api'
         }
+    
+    # ==================== Get Recent Videos ====================
+    
+    def get_recent_videos(self, channel_id: str, max_results: int = 30) -> List[Dict]:
+        """Get recent videos from channel to calculate actual monthly views"""
+        videos = []
+        
+        # Method 1: YouTube Data API
+        if self.api_key:
+            videos = self._get_videos_via_api(channel_id, max_results)
+        
+        # Method 2: Scrape videos page if API not available or failed
+        if not videos:
+            videos = self._scrape_recent_videos(channel_id, max_results)
+        
+        return videos
+    
+    def _get_videos_via_api(self, channel_id: str, max_results: int = 30) -> List[Dict]:
+        """Get videos using YouTube Data API"""
+        if not self.api_key:
+            return []
+        
+        try:
+            # First, get uploads playlist ID
+            params = {
+                'part': 'contentDetails',
+                'id': channel_id,
+                'key': self.api_key
+            }
+            
+            response = self.session.get(
+                f"{self.YOUTUBE_API_BASE}/channels",
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code != 200:
+                return []
+            
+            data = response.json()
+            items = data.get('items', [])
+            if not items:
+                return []
+            
+            uploads_playlist = items[0].get('contentDetails', {}).get('relatedPlaylists', {}).get('uploads', '')
+            if not uploads_playlist:
+                return []
+            
+            # Get videos from uploads playlist
+            params = {
+                'part': 'snippet,contentDetails',
+                'playlistId': uploads_playlist,
+                'maxResults': min(max_results, 50),
+                'key': self.api_key
+            }
+            
+            response = self.session.get(
+                f"{self.YOUTUBE_API_BASE}/playlistItems",
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code != 200:
+                return []
+            
+            data = response.json()
+            video_ids = []
+            
+            for item in data.get('items', []):
+                video_id = item.get('contentDetails', {}).get('videoId', '')
+                if video_id:
+                    video_ids.append(video_id)
+            
+            if not video_ids:
+                return []
+            
+            # Get video statistics
+            params = {
+                'part': 'snippet,statistics,contentDetails',
+                'id': ','.join(video_ids[:50]),
+                'key': self.api_key
+            }
+            
+            response = self.session.get(
+                f"{self.YOUTUBE_API_BASE}/videos",
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code != 200:
+                return []
+            
+            data = response.json()
+            videos = []
+            
+            for item in data.get('items', []):
+                snippet = item.get('snippet', {})
+                stats = item.get('statistics', {})
+                
+                videos.append({
+                    'video_id': item.get('id', ''),
+                    'title': snippet.get('title', ''),
+                    'published_at': snippet.get('publishedAt', ''),
+                    'view_count': int(stats.get('viewCount', 0)),
+                    'like_count': int(stats.get('likeCount', 0)),
+                    'comment_count': int(stats.get('commentCount', 0)),
+                })
+            
+            return videos
+            
+        except Exception as e:
+            logger.error(f"Error getting videos via API: {e}")
+            return []
+    
+    def _scrape_recent_videos(self, channel_id: str, max_results: int = 30) -> List[Dict]:
+        """Scrape recent videos from channel videos page"""
+        try:
+            url = f"https://www.youtube.com/channel/{channel_id}/videos"
+            response = self.session.get(url, timeout=20)
+            
+            if response.status_code != 200:
+                return []
+            
+            html = response.text
+            initial_data = self._extract_yt_initial_data(html)
+            
+            if not initial_data:
+                return []
+            
+            videos = []
+            
+            # Navigate to videos grid
+            tabs = initial_data.get('contents', {}).get('twoColumnBrowseResultsRenderer', {}).get('tabs', [])
+            
+            for tab in tabs:
+                tab_renderer = tab.get('tabRenderer', {})
+                if tab_renderer.get('selected'):
+                    content = tab_renderer.get('content', {})
+                    
+                    # Rich grid
+                    rich_grid = content.get('richGridRenderer', {})
+                    for item in rich_grid.get('contents', [])[:max_results]:
+                        video_renderer = item.get('richItemRenderer', {}).get('content', {}).get('videoRenderer', {})
+                        if video_renderer:
+                            video_data = self._parse_video_renderer(video_renderer)
+                            if video_data:
+                                videos.append(video_data)
+                    
+                    # Section list renderer
+                    section_list = content.get('sectionListRenderer', {})
+                    for section in section_list.get('contents', []):
+                        items = section.get('itemSectionRenderer', {}).get('contents', [])
+                        for item in items:
+                            grid = item.get('gridRenderer', {})
+                            for grid_item in grid.get('items', [])[:max_results]:
+                                video_renderer = grid_item.get('gridVideoRenderer', {})
+                                if video_renderer:
+                                    video_data = self._parse_video_renderer(video_renderer)
+                                    if video_data:
+                                        videos.append(video_data)
+            
+            return videos[:max_results]
+            
+        except Exception as e:
+            logger.error(f"Error scraping videos: {e}")
+            return []
+    
+    def _parse_video_renderer(self, renderer: Dict) -> Optional[Dict]:
+        """Parse video renderer data"""
+        try:
+            video_id = renderer.get('videoId', '')
+            if not video_id:
+                return None
+            
+            title = renderer.get('title', {}).get('runs', [{}])[0].get('text', '') or \
+                   renderer.get('title', {}).get('simpleText', '')
+            
+            # View count
+            view_text = renderer.get('viewCountText', {}).get('simpleText', '') or \
+                       renderer.get('viewCountText', {}).get('runs', [{}])[0].get('text', '')
+            view_count = self._parse_count_text(view_text)
+            
+            # Published time
+            published = renderer.get('publishedTimeText', {}).get('simpleText', '')
+            
+            return {
+                'video_id': video_id,
+                'title': title,
+                'view_count': view_count,
+                'published_text': published,
+                'published_at': self._parse_relative_time(published)
+            }
+        except:
+            return None
+    
+    def _parse_relative_time(self, text: str) -> str:
+        """Parse relative time text to approximate ISO date"""
+        from datetime import timedelta
+        
+        if not text:
+            return ''
+        
+        text = text.lower()
+        now = datetime.now()
+        
+        patterns = [
+            (r'(\d+)\s*(second|giây)', 'seconds'),
+            (r'(\d+)\s*(minute|phút)', 'minutes'),
+            (r'(\d+)\s*(hour|giờ)', 'hours'),
+            (r'(\d+)\s*(day|ngày)', 'days'),
+            (r'(\d+)\s*(week|tuần)', 'weeks'),
+            (r'(\d+)\s*(month|tháng)', 'months'),
+            (r'(\d+)\s*(year|năm)', 'years'),
+        ]
+        
+        for pattern, unit in patterns:
+            match = re.search(pattern, text)
+            if match:
+                value = int(match.group(1))
+                if unit == 'months':
+                    delta = timedelta(days=value * 30)
+                elif unit == 'years':
+                    delta = timedelta(days=value * 365)
+                elif unit == 'weeks':
+                    delta = timedelta(weeks=value)
+                else:
+                    delta = timedelta(**{unit: value})
+                
+                return (now - delta).isoformat()
+        
+        return ''
+    
+    def calculate_monthly_views(self, videos: List[Dict], total_views: int, video_count: int, channel_created: str = '') -> Dict:
+        """Calculate estimated monthly views based on recent video performance"""
+        now = datetime.now()
+        current_month = now.month
+        current_year = now.year
+        
+        result = {
+            'calculation_method': '',
+            'videos_analyzed': 0,
+            'videos_last_30_days': 0,
+            'views_last_30_days': 0,
+            'avg_views_per_video': 0,
+            'estimated_monthly_views': 0,
+            'views_this_month': 0,
+            'days_in_month': 30,
+            'channel_age_months': 0,
+            'avg_monthly_views_lifetime': 0,
+        }
+        
+        # Calculate channel age
+        if channel_created:
+            try:
+                if 'T' in channel_created:
+                    created_date = datetime.fromisoformat(channel_created.replace('Z', '+00:00'))
+                else:
+                    # Try parsing different formats
+                    for fmt in ['%Y-%m-%d', '%b %d, %Y', '%d %b %Y']:
+                        try:
+                            created_date = datetime.strptime(channel_created, fmt)
+                            break
+                        except:
+                            continue
+                
+                channel_age_days = (now - created_date.replace(tzinfo=None)).days
+                result['channel_age_months'] = max(1, channel_age_days // 30)
+            except:
+                pass
+        
+        # Calculate lifetime average
+        if result['channel_age_months'] > 0 and total_views > 0:
+            result['avg_monthly_views_lifetime'] = int(total_views / result['channel_age_months'])
+        
+        # If we have recent videos with data
+        if videos:
+            result['videos_analyzed'] = len(videos)
+            
+            # Filter videos from last 30 days
+            thirty_days_ago = now - timedelta(days=30)
+            recent_videos = []
+            
+            for video in videos:
+                pub_date = video.get('published_at', '')
+                if pub_date:
+                    try:
+                        video_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                        if video_date >= thirty_days_ago:
+                            recent_videos.append(video)
+                    except:
+                        pass
+            
+            result['videos_last_30_days'] = len(recent_videos)
+            
+            if recent_videos:
+                # Calculate views from videos in last 30 days
+                total_recent_views = sum(v.get('view_count', 0) for v in recent_videos)
+                result['views_last_30_days'] = total_recent_views
+                result['avg_views_per_video'] = int(total_recent_views / len(recent_videos))
+                result['estimated_monthly_views'] = total_recent_views
+                result['calculation_method'] = 'recent_30_days'
+            else:
+                # Use all analyzed videos
+                total_analyzed_views = sum(v.get('view_count', 0) for v in videos)
+                result['avg_views_per_video'] = int(total_analyzed_views / len(videos))
+                
+                # Estimate upload frequency
+                if len(videos) >= 2:
+                    # Get date range of videos
+                    dates = []
+                    for v in videos:
+                        pub = v.get('published_at', '')
+                        if pub:
+                            try:
+                                dates.append(datetime.fromisoformat(pub.replace('Z', '+00:00')).replace(tzinfo=None))
+                            except:
+                                pass
+                    
+                    if len(dates) >= 2:
+                        date_range = (max(dates) - min(dates)).days
+                        if date_range > 0:
+                            videos_per_month = (len(videos) / date_range) * 30
+                            result['estimated_monthly_views'] = int(result['avg_views_per_video'] * videos_per_month)
+                            result['calculation_method'] = 'video_frequency'
+                
+                if result['estimated_monthly_views'] == 0:
+                    # Fallback: assume 4 videos per month
+                    result['estimated_monthly_views'] = result['avg_views_per_video'] * 4
+                    result['calculation_method'] = 'avg_estimate'
+        else:
+            # No video data, use total views / channel age
+            if result['avg_monthly_views_lifetime'] > 0:
+                result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
+                result['calculation_method'] = 'lifetime_average'
+            elif video_count > 0 and total_views > 0:
+                # Rough estimate
+                avg_per_video = total_views / video_count
+                result['avg_views_per_video'] = int(avg_per_video)
+                result['estimated_monthly_views'] = int(avg_per_video * 4)  # Assume 4 videos/month
+                result['calculation_method'] = 'total_average'
+        
+        return result
     
     # ==================== Web Scraping ====================
     
@@ -690,51 +1034,65 @@ class YouTubeAnalyzer:
     
     # ==================== Earnings Estimation ====================
     
-    def estimate_earnings(self, stats: Dict) -> Dict:
-        """Estimate monthly earnings based on channel stats"""
+    def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None) -> Dict:
+        """Estimate monthly earnings based on channel stats and actual monthly views"""
         subscriber_count = stats.get('subscriber_count', 0)
         view_count = stats.get('view_count', 0)
         video_count = stats.get('video_count', 0)
         country = stats.get('country', 'Unknown')
         
         # Determine CPM based on country
-        cpm_key = 'vietnam' if country.lower() in ['vn', 'vietnam', 'việt nam'] else 'default'
+        is_vietnam = country.lower() in ['vn', 'vietnam', 'việt nam']
+        cpm_key = 'vietnam' if is_vietnam else 'default'
         cpm = self.CPM_RATES[cpm_key]
         
-        # Estimate monthly views
-        if video_count > 0 and view_count > 0:
-            avg_views_per_video = view_count / video_count
-            # Estimate 2-8 videos per month
-            monthly_views_low = avg_views_per_video * 2
-            monthly_views_avg = avg_views_per_video * 4
-            monthly_views_high = avg_views_per_video * 8
-        elif subscriber_count > 0:
-            # Estimate based on subscribers (typically 5-20% engagement)
-            monthly_views_low = subscriber_count * 0.5
-            monthly_views_avg = subscriber_count * 2
-            monthly_views_high = subscriber_count * 5
+        # Get estimated monthly views from actual data
+        if monthly_views_data and monthly_views_data.get('estimated_monthly_views', 0) > 0:
+            estimated_monthly_views = monthly_views_data['estimated_monthly_views']
+            calculation_method = monthly_views_data.get('calculation_method', 'data_analysis')
         else:
-            monthly_views_low = monthly_views_avg = monthly_views_high = 0
+            # Fallback calculation
+            if video_count > 0 and view_count > 0:
+                avg_views_per_video = view_count / video_count
+                estimated_monthly_views = int(avg_views_per_video * 4)  # Assume 4 videos/month
+            elif subscriber_count > 0:
+                estimated_monthly_views = int(subscriber_count * 2)  # ~2x subscribers as monthly views
+            else:
+                estimated_monthly_views = 0
+            calculation_method = 'fallback_estimate'
         
-        # Calculate earnings (only ~50% of views are monetized)
-        monetization_rate = 0.5
+        # Calculate earnings ranges
+        # Only ~45-55% of views are monetized (ads don't show on all views)
+        monetization_rate_low = 0.40
+        monetization_rate_avg = 0.50
+        monetization_rate_high = 0.55
         
-        earnings_low = (monthly_views_low * monetization_rate * cpm['low']) / 1000
-        earnings_avg = (monthly_views_avg * monetization_rate * cpm['avg']) / 1000
-        earnings_high = (monthly_views_high * monetization_rate * cpm['high']) / 1000
+        # Low estimate: low CPM, low monetization rate
+        earnings_low = (estimated_monthly_views * monetization_rate_low * cpm['low']) / 1000
+        
+        # Average estimate: avg CPM, avg monetization rate
+        earnings_avg = (estimated_monthly_views * monetization_rate_avg * cpm['avg']) / 1000
+        
+        # High estimate: high CPM, high monetization rate
+        earnings_high = (estimated_monthly_views * monetization_rate_high * cpm['high']) / 1000
         
         return {
-            'estimated_monthly_views': {
-                'low': int(monthly_views_low),
-                'average': int(monthly_views_avg),
-                'high': int(monthly_views_high)
-            },
+            'estimated_monthly_views': estimated_monthly_views,
+            'monthly_views_data': monthly_views_data or {},
+            'calculation_method': calculation_method,
             'cpm_range': cpm,
+            'cpm_region': 'Việt Nam' if is_vietnam else 'Quốc tế',
+            'monetization_rate': {
+                'low': monetization_rate_low,
+                'average': monetization_rate_avg,
+                'high': monetization_rate_high
+            },
             'earnings_usd': {
                 'low': round(earnings_low, 2),
                 'average': round(earnings_avg, 2),
                 'high': round(earnings_high, 2)
-            }
+            },
+            'earnings_formula': f"Views × Tỷ lệ quảng cáo × CPM ÷ 1000"
         }
     
     # ==================== Main Analysis Method ====================
@@ -796,7 +1154,7 @@ class YouTubeAnalyzer:
                 else:
                     stats = scraped
                 
-                method_used = 'scraping' if not method_used else method_used + '+scraping'
+                method_used = 'scraping' if method_used == 'none' else method_used + '+scraping'
                 logger.info("Got data from scraping")
         
         # Validate results
@@ -818,8 +1176,28 @@ class YouTubeAnalyzer:
                 'error': 'Không thể lấy số liệu kênh. Kênh có thể không tồn tại hoặc đã ẩn thông tin.'
             }
         
-        # Estimate earnings
-        earnings = self.estimate_earnings(stats)
+        # Get channel_id for fetching videos
+        channel_id = stats.get('channel_id', '')
+        if not channel_id:
+            channel_id = self.resolve_to_channel_id(identifier)
+        
+        # Get recent videos to calculate actual monthly views
+        recent_videos = []
+        if channel_id:
+            logger.info(f"Getting recent videos for channel: {channel_id}")
+            recent_videos = self.get_recent_videos(channel_id, max_results=30)
+            logger.info(f"Found {len(recent_videos)} recent videos")
+        
+        # Calculate monthly views based on actual data
+        monthly_views_data = self.calculate_monthly_views(
+            videos=recent_videos,
+            total_views=stats.get('view_count', 0),
+            video_count=stats.get('video_count', 0),
+            channel_created=stats.get('created_at', '')
+        )
+        
+        # Estimate earnings with actual monthly views
+        earnings = self.estimate_earnings(stats, monthly_views_data)
         
         # Get exchange rate
         exchange_rate = self.get_exchange_rate()
@@ -831,15 +1209,33 @@ class YouTubeAnalyzer:
             'high': round(earnings['earnings_usd']['high'] * exchange_rate)
         }
         
+        # Get current month name
+        month_names_vn = ['', 'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
+                         'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12']
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        
         return {
             'success': True,
             'channel': stats,
+            'recent_videos': recent_videos[:10],  # Include top 10 recent videos
+            'monthly_analysis': {
+                'current_month': f"{month_names_vn[current_month]} {current_year}",
+                'estimated_monthly_views': earnings['estimated_monthly_views'],
+                'calculation_method': earnings['calculation_method'],
+                'videos_analyzed': monthly_views_data.get('videos_analyzed', 0),
+                'videos_last_30_days': monthly_views_data.get('videos_last_30_days', 0),
+                'views_last_30_days': monthly_views_data.get('views_last_30_days', 0),
+                'avg_views_per_video': monthly_views_data.get('avg_views_per_video', 0),
+                'channel_age_months': monthly_views_data.get('channel_age_months', 0),
+                'avg_monthly_views_lifetime': monthly_views_data.get('avg_monthly_views_lifetime', 0),
+            },
             'earnings': earnings,
             'earnings_vnd': earnings_vnd,
             'exchange_rate': exchange_rate,
             'method': method_used,
             'analyzed_at': datetime.now().isoformat(),
-            'disclaimer': f'Ước tính dựa trên CPM ${earnings["cpm_range"]["low"]}-${earnings["cpm_range"]["high"]}/1000 views. Thu nhập thực tế phụ thuộc vào niche, vùng miền người xem, tỷ lệ quảng cáo và nhiều yếu tố khác.'
+            'disclaimer': f'Ước tính dựa trên CPM ${earnings["cpm_range"]["low"]}-${earnings["cpm_range"]["high"]}/1000 views ({earnings["cpm_region"]}). Thu nhập thực tế phụ thuộc vào niche, vùng miền người xem, tỷ lệ quảng cáo và nhiều yếu tố khác.'
         }
 
 

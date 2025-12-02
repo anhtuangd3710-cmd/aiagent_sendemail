@@ -664,18 +664,62 @@
                                 </div>
                             </div>
 
-                            <!-- Monthly Views Estimate -->
+                            <!-- Monthly Views Analysis -->
                             <div class="monthly-views-section">
-                                <h4><i class="fas fa-chart-area"></i> Ước tính lượt xem hàng tháng</h4>
-                                <div class="views-range">
-                                    <div class="views-bar">
-                                        <div class="views-fill" id="views-fill"></div>
+                                <h4><i class="fas fa-chart-area"></i> Phân tích lượt xem hàng tháng</h4>
+                                
+                                <div class="monthly-analysis-details">
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-calendar"></i> Tháng phân tích:</span>
+                                        <span class="analysis-value" id="analysis-month">Tháng 12 2025</span>
                                     </div>
-                                    <div class="views-labels">
-                                        <span id="monthly-views-low">0</span>
-                                        <span id="monthly-views-avg">~0</span>
-                                        <span id="monthly-views-high">0</span>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-eye"></i> Lượt xem ước tính/tháng:</span>
+                                        <span class="analysis-value highlight" id="monthly-views-estimate">0</span>
                                     </div>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-video"></i> Video phân tích:</span>
+                                        <span class="analysis-value" id="videos-analyzed">0 video</span>
+                                    </div>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-clock"></i> Video 30 ngày qua:</span>
+                                        <span class="analysis-value" id="videos-last-30-days">0 video</span>
+                                    </div>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-chart-bar"></i> Views 30 ngày qua:</span>
+                                        <span class="analysis-value" id="views-last-30-days">0</span>
+                                    </div>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-calculator"></i> Views TB/video:</span>
+                                        <span class="analysis-value" id="avg-views-per-video">0</span>
+                                    </div>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-history"></i> Tuổi kênh:</span>
+                                        <span class="analysis-value" id="channel-age">0 tháng</span>
+                                    </div>
+                                    <div class="analysis-row">
+                                        <span class="analysis-label"><i class="fas fa-cog"></i> Phương pháp tính:</span>
+                                        <span class="analysis-value" id="calculation-method">-</span>
+                                    </div>
+                                </div>
+
+                                <!-- CPM Info -->
+                                <div class="cpm-info">
+                                    <div class="cpm-header">
+                                        <i class="fas fa-info-circle"></i> Thông tin CPM (Cost Per Mille)
+                                    </div>
+                                    <div class="cpm-details">
+                                        <span id="cpm-region">Vùng: Quốc tế</span>
+                                        <span id="cpm-range">CPM: $1.0 - $6.0 / 1000 views</span>
+                                        <span id="monetization-rate">Tỷ lệ quảng cáo: ~40-55%</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Recent Videos Preview -->
+                            <div class="recent-videos-section" id="recent-videos-section" style="display: none;">
+                                <h4><i class="fas fa-film"></i> Video gần đây</h4>
+                                <div class="recent-videos-list" id="recent-videos-list">
                                 </div>
                             </div>
 

@@ -4375,6 +4375,8 @@ function displayYouTubeResults(data) {
     const channel = data.channel || {};
     const earnings = data.earnings || {};
     const earningsVnd = data.earnings_vnd || {};
+    const monthlyAnalysis = data.monthly_analysis || {};
+    const recentVideos = data.recent_videos || [];
     
     // Channel Info
     const thumbnail = document.getElementById('channel-thumbnail');
@@ -4409,11 +4411,94 @@ function displayYouTubeResults(data) {
     const exchangeRate = data.exchange_rate || 24500;
     document.getElementById('exchange-rate').textContent = `1 USD = ${formatNumber(exchangeRate)} VND`;
     
-    // Monthly Views
-    const monthlyViews = earnings.estimated_monthly_views || {};
-    document.getElementById('monthly-views-low').textContent = formatNumber(monthlyViews.low || 0);
-    document.getElementById('monthly-views-avg').textContent = `~${formatNumber(monthlyViews.average || 0)}`;
-    document.getElementById('monthly-views-high').textContent = formatNumber(monthlyViews.high || 0);
+    // Monthly Analysis Details
+    const analysisMonth = document.getElementById('analysis-month');
+    if (analysisMonth) analysisMonth.textContent = monthlyAnalysis.current_month || 'N/A';
+    
+    const monthlyViewsEstimate = document.getElementById('monthly-views-estimate');
+    if (monthlyViewsEstimate) monthlyViewsEstimate.textContent = formatNumber(monthlyAnalysis.estimated_monthly_views || earnings.estimated_monthly_views || 0);
+    
+    const videosAnalyzed = document.getElementById('videos-analyzed');
+    if (videosAnalyzed) videosAnalyzed.textContent = `${monthlyAnalysis.videos_analyzed || 0} video`;
+    
+    const videosLast30 = document.getElementById('videos-last-30-days');
+    if (videosLast30) videosLast30.textContent = `${monthlyAnalysis.videos_last_30_days || 0} video`;
+    
+    const viewsLast30 = document.getElementById('views-last-30-days');
+    if (viewsLast30) viewsLast30.textContent = formatNumber(monthlyAnalysis.views_last_30_days || 0);
+    
+    const avgViewsPerVideo = document.getElementById('avg-views-per-video');
+    if (avgViewsPerVideo) avgViewsPerVideo.textContent = formatNumber(monthlyAnalysis.avg_views_per_video || 0);
+    
+    const channelAge = document.getElementById('channel-age');
+    if (channelAge) {
+        const months = monthlyAnalysis.channel_age_months || 0;
+        if (months >= 12) {
+            const years = Math.floor(months / 12);
+            const remainMonths = months % 12;
+            channelAge.textContent = remainMonths > 0 ? `${years} năm ${remainMonths} tháng` : `${years} năm`;
+        } else {
+            channelAge.textContent = `${months} tháng`;
+        }
+    }
+    
+    const calculationMethod = document.getElementById('calculation-method');
+    if (calculationMethod) {
+        const methodMap = {
+            'recent_30_days': 'Dựa trên video 30 ngày gần đây',
+            'video_frequency': 'Dựa trên tần suất đăng video',
+            'avg_estimate': 'Ước tính TB views/video × 4 video/tháng',
+            'lifetime_average': 'TB views/tháng từ tổng views',
+            'total_average': 'Ước tính từ tổng views/video',
+            'fallback_estimate': 'Ước tính dự phòng'
+        };
+        calculationMethod.textContent = methodMap[monthlyAnalysis.calculation_method || earnings.calculation_method] || 'Tự động';
+    }
+    
+    // CPM Info
+    const cpmRange = earnings.cpm_range || {};
+    const cpmRegion = document.getElementById('cpm-region');
+    if (cpmRegion) cpmRegion.textContent = `Vùng: ${earnings.cpm_region || 'Quốc tế'}`;
+    
+    const cpmRangeEl = document.getElementById('cpm-range');
+    if (cpmRangeEl) cpmRangeEl.textContent = `CPM: $${cpmRange.low || 1} - $${cpmRange.high || 6} / 1000 views`;
+    
+    const monetizationRate = document.getElementById('monetization-rate');
+    if (monetizationRate) {
+        const rates = earnings.monetization_rate || {};
+        monetizationRate.textContent = `Tỷ lệ quảng cáo: ~${Math.round((rates.low || 0.4) * 100)}-${Math.round((rates.high || 0.55) * 100)}%`;
+    }
+    
+    // Recent Videos
+    const recentVideosSection = document.getElementById('recent-videos-section');
+    const recentVideosList = document.getElementById('recent-videos-list');
+    
+    if (recentVideos.length > 0 && recentVideosSection && recentVideosList) {
+        recentVideosSection.style.display = 'block';
+        recentVideosList.innerHTML = '';
+        
+        recentVideos.slice(0, 5).forEach((video, index) => {
+            const videoItem = document.createElement('div');
+            videoItem.className = 'recent-video-item';
+            
+            const publishedText = video.published_text || video.published_at?.split('T')[0] || '';
+            
+            videoItem.innerHTML = `
+                <span class="video-index">${index + 1}</span>
+                <div class="video-info">
+                    <div class="video-title" title="${video.title || ''}">${video.title || 'Video'}</div>
+                    <div class="video-meta">
+                        <span class="video-views"><i class="fas fa-eye"></i> ${formatNumber(video.view_count || 0)}</span>
+                        <span class="video-date"><i class="fas fa-clock"></i> ${publishedText}</span>
+                    </div>
+                </div>
+            `;
+            
+            recentVideosList.appendChild(videoItem);
+        });
+    } else if (recentVideosSection) {
+        recentVideosSection.style.display = 'none';
+    }
     
     // Disclaimer
     const disclaimer = document.getElementById('disclaimer-text');

@@ -5641,40 +5641,157 @@ select:focus-visible {
     color: var(--primary-color);
 }
 
-.views-range {
-    padding: 20px;
+/* Monthly Analysis Details */
+.monthly-analysis-details {
     background: var(--bg-secondary);
     border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
 }
 
-.views-bar {
-    height: 12px;
-    background: linear-gradient(90deg, #e5e7eb 0%, #f59e0b 50%, #10b981 100%);
-    border-radius: 6px;
-    position: relative;
-    overflow: hidden;
-}
-
-.views-fill {
-    position: absolute;
-    left: 0;
-    top: 0;
-    height: 100%;
-    background: rgba(255, 255, 255, 0.3);
-    border-radius: 6px;
-    transition: width 0.5s ease;
-}
-
-.views-labels {
+.analysis-row {
     display: flex;
     justify-content: space-between;
-    margin-top: 12px;
-    font-size: 13px;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color);
 }
 
-.views-labels span:first-child { color: #6b7280; }
-.views-labels span:nth-child(2) { color: #f59e0b; font-weight: 600; }
-.views-labels span:last-child { color: var(--success-color); }
+.analysis-row:last-child {
+    border-bottom: none;
+}
+
+.analysis-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.analysis-label i {
+    color: var(--primary-color);
+    width: 16px;
+    text-align: center;
+}
+
+.analysis-value {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.analysis-value.highlight {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--success-color);
+}
+
+/* CPM Info */
+.cpm-info {
+    background: rgba(var(--primary-rgb), 0.08);
+    border: 1px solid rgba(var(--primary-rgb), 0.2);
+    border-radius: 10px;
+    padding: 12px 16px;
+    margin-bottom: 16px;
+}
+
+.cpm-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+}
+
+.cpm-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.cpm-details span {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Recent Videos Section */
+.recent-videos-section {
+    margin-bottom: 24px;
+}
+
+.recent-videos-section h4 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 16px 0;
+    font-size: 16px;
+    color: var(--text-primary);
+}
+
+.recent-videos-section h4 i {
+    color: #ff0000;
+}
+
+.recent-videos-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.recent-video-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+.recent-video-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.video-index {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    width: 24px;
+    text-align: center;
+}
+
+.video-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.video-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-bottom: 4px;
+}
+
+.video-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.video-views {
+    color: var(--success-color);
+    font-weight: 500;
+}
 
 /* Disclaimer */
 .youtube-disclaimer {
