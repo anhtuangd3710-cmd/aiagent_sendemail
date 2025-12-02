@@ -4372,34 +4372,86 @@ async function analyzeYouTubeChannel() {
 }
 
 // Display Current Month Earnings
+// YouTube Payment Cycle: Money earned in month X is finalized on day 3-5 of month X+1
+// So on day 1-2, we're still in the previous month's earning period
 function displayCurrentMonthEarnings(earnings, earningsVnd, exchangeRate) {
     const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
-    const currentDay = now.getDate();
+    let displayMonth, displayYear, earningDay;
     
-    // Get days in current month
-    const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    const progressPercent = (currentDay / daysInMonth) * 100;
+    // YouTube finalizes previous month's earnings around day 3-5
+    // Days 1-2 of current month = still earning for previous month
+    if (now.getDate() <= 2) {
+        // We're in days 1-2, so we're still in the previous month's earning cycle
+        displayMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+        displayYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+        // Day 1-2 of new month = day 31-32 of earning period
+        const prevMonthDays = new Date(displayYear, displayMonth + 1, 0).getDate();
+        earningDay = prevMonthDays + now.getDate();
+    } else {
+        // Day 3+, we're in current month's earning cycle (day 1 starts from day 3)
+        displayMonth = now.getMonth();
+        displayYear = now.getFullYear();
+        earningDay = now.getDate() - 2; // Day 3 = earning day 1
+    }
+    
+    // Get days in the earning month
+    const daysInEarningMonth = new Date(displayYear, displayMonth + 1, 0).getDate();
+    
+    // For days 1-2, we're near end of previous month (day 31-32 out of ~33)
+    // For day 3+, calculate progress from day 3
+    let totalEarningDays, progressPercent;
+    
+    if (now.getDate() <= 2) {
+        // Previous month earning period: full month + 2 days of new month
+        totalEarningDays = daysInEarningMonth + 2;
+        progressPercent = (earningDay / totalEarningDays) * 100;
+    } else {
+        // Current month: from day 3 to end of month + 2 days next month
+        const currentMonthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        totalEarningDays = currentMonthDays - 2 + 2; // = currentMonthDays days total
+        progressPercent = (earningDay / (currentMonthDays - 2)) * 100;
+    }
     
     // Month names in Vietnamese
     const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
                         'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
     
-    // Update month name
+    // Update month name with note about payment cycle
     const monthNameEl = document.getElementById('current-month-name');
-    if (monthNameEl) monthNameEl.textContent = `${monthNames[currentMonth]}/${currentYear}`;
+    if (monthNameEl) {
+        if (now.getDate() <= 2) {
+            monthNameEl.innerHTML = `${monthNames[displayMonth]}/${displayYear} <small style="opacity: 0.7">(kỳ thanh toán)</small>`;
+        } else {
+            monthNameEl.textContent = `${monthNames[displayMonth]}/${displayYear}`;
+        }
+    }
     
     // Update days passed
     const daysPassedEl = document.getElementById('days-passed');
-    if (daysPassedEl) daysPassedEl.textContent = `Đã qua ${currentDay}/${daysInMonth} ngày`;
+    if (daysPassedEl) {
+        if (now.getDate() <= 2) {
+            daysPassedEl.textContent = `Ngày ${earningDay}/${totalEarningDays} (tổng hợp ngày 3/${now.getMonth() + 1})`;
+        } else {
+            daysPassedEl.textContent = `Ngày ${earningDay} kỳ thu nhập`;
+        }
+    }
     
     // Calculate current earnings (pro-rata based on days passed)
     const avgEarningsUsd = earnings.earnings_usd?.average || 0;
     const avgEarningsVnd = earningsVnd.average || 0;
     
-    const earnedUsd = (avgEarningsUsd / daysInMonth) * currentDay;
-    const earnedVnd = (avgEarningsVnd / daysInMonth) * currentDay;
+    // Calculate earned so far
+    let earnedUsd, earnedVnd;
+    if (now.getDate() <= 2) {
+        // Near end of earning period
+        earnedUsd = (avgEarningsUsd / daysInEarningMonth) * earningDay;
+        earnedVnd = (avgEarningsVnd / daysInEarningMonth) * earningDay;
+    } else {
+        // New earning period
+        const currentMonthDays = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        earnedUsd = (avgEarningsUsd / currentMonthDays) * earningDay;
+        earnedVnd = (avgEarningsVnd / currentMonthDays) * earningDay;
+    }
     
     // Update current earned
     const currentEarnedUsd = document.getElementById('current-earned-usd');
@@ -4408,7 +4460,7 @@ function displayCurrentMonthEarnings(earnings, earningsVnd, exchangeRate) {
     const currentEarnedVnd = document.getElementById('current-earned-vnd');
     if (currentEarnedVnd) currentEarnedVnd.textContent = formatVND(Math.round(earnedVnd));
     
-    // Projected earnings (same as monthly average for now)
+    // Projected earnings for the earning period
     const projectedUsd = document.getElementById('projected-month-usd');
     if (projectedUsd) projectedUsd.textContent = `$${formatNumber(avgEarningsUsd)}`;
     
@@ -4417,10 +4469,10 @@ function displayCurrentMonthEarnings(earnings, earningsVnd, exchangeRate) {
     
     // Update progress bar
     const progressFill = document.getElementById('earnings-progress-fill');
-    if (progressFill) progressFill.style.width = `${progressPercent}%`;
+    if (progressFill) progressFill.style.width = `${Math.min(progressPercent, 100)}%`;
     
     const progressText = document.getElementById('earnings-progress-text');
-    if (progressText) progressText.textContent = `${Math.round(progressPercent)}% tháng`;
+    if (progressText) progressText.textContent = `${Math.round(Math.min(progressPercent, 100))}% kỳ`;
 }
 
 // Display Monetization Status
@@ -4609,18 +4661,35 @@ function displayYouTubeResults(data) {
         }
     }
     
-    // CPM Info
+    // CPM/RPM Info - Updated with niche and more details
     const cpmRange = earnings.cpm_range || {};
+    const rpmRange = earnings.rpm_range || {};
+    
     const cpmRegion = document.getElementById('cpm-region');
-    if (cpmRegion) cpmRegion.textContent = `Vùng: ${earnings.cpm_region || 'Quốc tế'}`;
+    if (cpmRegion) {
+        const niche = earnings.niche_vi || earnings.niche || 'Tổng hợp';
+        const region = earnings.cpm_region || 'Quốc tế';
+        cpmRegion.innerHTML = `<strong>Niche:</strong> ${niche} | <strong>Vùng khán giả:</strong> ${region}`;
+    }
     
     const cpmRangeEl = document.getElementById('cpm-range');
-    if (cpmRangeEl) cpmRangeEl.textContent = `CPM: $${cpmRange.low || 1} - $${cpmRange.high || 6} / 1000 views`;
+    if (cpmRangeEl) {
+        const cpmLow = cpmRange.low || 0.5;
+        const cpmHigh = cpmRange.high || 6;
+        const rpmLow = rpmRange.low || (cpmLow * 0.25);
+        const rpmHigh = rpmRange.high || (cpmHigh * 0.25);
+        cpmRangeEl.innerHTML = `<strong>CPM:</strong> $${cpmLow} - $${cpmHigh} | <strong>RPM:</strong> $${rpmLow.toFixed(2)} - $${rpmHigh.toFixed(2)}`;
+    }
     
     const monetizationRate = document.getElementById('monetization-rate');
     if (monetizationRate) {
-        const rates = earnings.monetization_rate || {};
-        monetizationRate.textContent = `Tỷ lệ quảng cáo: ~${Math.round((rates.low || 0.4) * 100)}-${Math.round((rates.high || 0.55) * 100)}%`;
+        const rate = earnings.monetization_rate || 0.45;
+        const engagement = earnings.engagement_rate || 5;
+        const seasonality = earnings.seasonality || 1;
+        let seasonText = '';
+        if (seasonality > 1.1) seasonText = ' (Q4 cao)';
+        else if (seasonality < 0.9) seasonText = ' (Q1 thấp)';
+        monetizationRate.innerHTML = `<strong>Ads:</strong> ~${Math.round(rate * 100)}% views | <strong>Engagement:</strong> ${engagement}%${seasonText}`;
     }
     
     // Recent Videos

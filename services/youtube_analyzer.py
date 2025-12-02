@@ -28,15 +28,55 @@ class YouTubeAnalyzer:
     """Comprehensive YouTube channel analyzer using multiple data sources"""
     
     # CPM rates by region/niche (USD per 1000 monetized views)
+    # Updated with more accurate 2024-2025 data
     CPM_RATES = {
-        'gaming': {'low': 1.0, 'avg': 2.5, 'high': 4.0},
-        'entertainment': {'low': 0.5, 'avg': 2.0, 'high': 4.0},
-        'education': {'low': 2.0, 'avg': 5.0, 'high': 10.0},
-        'tech': {'low': 2.0, 'avg': 6.0, 'high': 12.0},
-        'finance': {'low': 5.0, 'avg': 12.0, 'high': 25.0},
-        'music': {'low': 0.5, 'avg': 1.5, 'high': 3.0},
-        'default': {'low': 1.0, 'avg': 3.0, 'high': 6.0},
-        'vietnam': {'low': 0.3, 'avg': 1.0, 'high': 2.5},  # Vietnamese channels
+        # By Niche (USD audience)
+        'finance': {'low': 8.0, 'avg': 15.0, 'high': 30.0},      # Finance, investing, crypto
+        'business': {'low': 6.0, 'avg': 12.0, 'high': 25.0},     # Business, entrepreneurship
+        'tech': {'low': 4.0, 'avg': 8.0, 'high': 15.0},          # Technology, software
+        'education': {'low': 3.0, 'avg': 6.0, 'high': 12.0},     # Educational content
+        'health': {'low': 3.0, 'avg': 7.0, 'high': 15.0},        # Health, fitness
+        'gaming': {'low': 1.5, 'avg': 3.5, 'high': 6.0},         # Gaming
+        'entertainment': {'low': 1.0, 'avg': 3.0, 'high': 5.0},  # Entertainment, vlogs
+        'music': {'low': 0.8, 'avg': 2.0, 'high': 4.0},          # Music
+        'lifestyle': {'low': 1.5, 'avg': 3.5, 'high': 7.0},      # Lifestyle, beauty
+        'food': {'low': 1.5, 'avg': 3.5, 'high': 6.0},           # Food, cooking
+        'travel': {'low': 2.0, 'avg': 4.0, 'high': 8.0},         # Travel
+        'news': {'low': 2.0, 'avg': 4.5, 'high': 8.0},           # News, politics
+        'kids': {'low': 0.5, 'avg': 1.5, 'high': 3.0},           # Kids content (limited ads)
+        'default': {'low': 1.5, 'avg': 4.0, 'high': 8.0},        # Default/unknown
+        
+        # By Country/Region (for audience location)
+        'us': {'low': 3.0, 'avg': 7.0, 'high': 15.0},            # USA
+        'uk': {'low': 2.5, 'avg': 6.0, 'high': 12.0},            # UK
+        'canada': {'low': 2.5, 'avg': 5.5, 'high': 11.0},        # Canada
+        'australia': {'low': 2.5, 'avg': 5.5, 'high': 11.0},     # Australia
+        'germany': {'low': 2.0, 'avg': 5.0, 'high': 10.0},       # Germany
+        'japan': {'low': 1.5, 'avg': 4.0, 'high': 8.0},          # Japan
+        'india': {'low': 0.3, 'avg': 0.8, 'high': 2.0},          # India
+        'brazil': {'low': 0.4, 'avg': 1.0, 'high': 2.5},         # Brazil
+        'indonesia': {'low': 0.3, 'avg': 0.7, 'high': 1.5},      # Indonesia
+        'vietnam': {'low': 0.2, 'avg': 0.6, 'high': 1.5},        # Vietnam
+        'philippines': {'low': 0.3, 'avg': 0.7, 'high': 1.5},    # Philippines
+        'thailand': {'low': 0.3, 'avg': 0.8, 'high': 1.8},       # Thailand
+        'international': {'low': 1.0, 'avg': 3.0, 'high': 6.0},  # Mixed international
+    }
+    
+    # Niche keywords for detection
+    NICHE_KEYWORDS = {
+        'finance': ['finance', 'invest', 'crypto', 'bitcoin', 'stock', 'trading', 'money', 'tài chính', 'đầu tư', 'chứng khoán', 'tiền'],
+        'business': ['business', 'entrepreneur', 'startup', 'marketing', 'kinh doanh', 'khởi nghiệp'],
+        'tech': ['tech', 'technology', 'software', 'programming', 'code', 'developer', 'công nghệ', 'lập trình', 'review'],
+        'education': ['education', 'learn', 'tutorial', 'course', 'học', 'giáo dục', 'hướng dẫn', 'dạy'],
+        'health': ['health', 'fitness', 'workout', 'gym', 'diet', 'nutrition', 'sức khỏe', 'tập gym', 'thể dục'],
+        'gaming': ['gaming', 'game', 'gameplay', 'gamer', 'playthrough', 'stream', 'chơi game'],
+        'entertainment': ['entertainment', 'funny', 'comedy', 'vlog', 'reaction', 'giải trí', 'hài', 'vui'],
+        'music': ['music', 'song', 'cover', 'mv', 'official', 'nhạc', 'bài hát', 'ca sĩ'],
+        'lifestyle': ['lifestyle', 'beauty', 'fashion', 'makeup', 'skincare', 'làm đẹp', 'thời trang', 'cuộc sống'],
+        'food': ['food', 'cooking', 'recipe', 'chef', 'mukbang', 'ẩm thực', 'nấu ăn', 'món ăn'],
+        'travel': ['travel', 'trip', 'tour', 'destination', 'du lịch', 'phượt', 'khám phá'],
+        'news': ['news', 'politics', 'current', 'tin tức', 'thời sự', 'chính trị'],
+        'kids': ['kids', 'children', 'nursery', 'cartoon', 'animation', 'trẻ em', 'thiếu nhi', 'hoạt hình'],
     }
     
     # APIs
@@ -1348,17 +1388,176 @@ Lưu ý:
     
     # ==================== Earnings Estimation ====================
     
-    def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None) -> Dict:
+    def detect_channel_niche(self, channel_data: Dict, videos: List[Dict] = None) -> str:
+        """Detect channel niche from title, description, and video titles"""
+        text_to_analyze = []
+        
+        # Add channel info
+        text_to_analyze.append(channel_data.get('title', '').lower())
+        text_to_analyze.append(channel_data.get('description', '').lower())
+        text_to_analyze.append(channel_data.get('keywords', '').lower())
+        
+        # Add video titles
+        if videos:
+            for video in videos[:10]:
+                text_to_analyze.append(video.get('title', '').lower())
+        
+        combined_text = ' '.join(text_to_analyze)
+        
+        # Score each niche
+        niche_scores = {}
+        for niche, keywords in self.NICHE_KEYWORDS.items():
+            score = sum(1 for kw in keywords if kw in combined_text)
+            if score > 0:
+                niche_scores[niche] = score
+        
+        if niche_scores:
+            return max(niche_scores, key=niche_scores.get)
+        
+        return 'default'
+    
+    def get_audience_region(self, channel_data: Dict) -> str:
+        """Estimate primary audience region based on channel info"""
+        country = channel_data.get('country', '').lower()
+        title = channel_data.get('title', '').lower()
+        description = channel_data.get('description', '').lower()
+        
+        # Map country codes to regions
+        country_map = {
+            'vn': 'vietnam', 'vietnam': 'vietnam', 'việt nam': 'vietnam',
+            'us': 'us', 'united states': 'us', 'usa': 'us',
+            'gb': 'uk', 'uk': 'uk', 'united kingdom': 'uk',
+            'ca': 'canada', 'canada': 'canada',
+            'au': 'australia', 'australia': 'australia',
+            'de': 'germany', 'germany': 'germany',
+            'jp': 'japan', 'japan': 'japan',
+            'in': 'india', 'india': 'india',
+            'br': 'brazil', 'brazil': 'brazil',
+            'id': 'indonesia', 'indonesia': 'indonesia',
+            'ph': 'philippines', 'philippines': 'philippines',
+            'th': 'thailand', 'thailand': 'thailand',
+        }
+        
+        # Check country code
+        if country in country_map:
+            return country_map[country]
+        
+        # Check for Vietnamese content indicators
+        vn_indicators = ['việt', 'tiếng việt', 'người việt', 'viet', 'vietnam']
+        if any(ind in title or ind in description for ind in vn_indicators):
+            return 'vietnam'
+        
+        # Default to international
+        return 'international'
+    
+    def calculate_rpm(self, niche: str, region: str, engagement_rate: float = 0.05) -> Dict:
+        """
+        Calculate RPM (Revenue Per Mille) more accurately.
+        RPM = (Estimated earnings / Views) × 1000
+        
+        Factors affecting RPM:
+        1. Channel niche (finance > tech > gaming > entertainment)
+        2. Audience geography (US/UK/Canada > EU > Asia > SEA)
+        3. Engagement rate (higher = better ad rates)
+        4. Video length (8+ mins = mid-roll ads = higher RPM)
+        5. Seasonality (Q4 > Q1)
+        """
+        # Get base CPM from niche
+        niche_cpm = self.CPM_RATES.get(niche, self.CPM_RATES['default'])
+        
+        # Get region multiplier
+        region_cpm = self.CPM_RATES.get(region, self.CPM_RATES['international'])
+        
+        # Blend niche and region (region has more impact on actual earnings)
+        # For Vietnamese creators with Vietnamese audience, region CPM dominates
+        if region == 'vietnam':
+            # Vietnamese audience = low CPM regardless of niche
+            blended_cpm = {
+                'low': region_cpm['low'],
+                'avg': (region_cpm['avg'] * 0.7 + niche_cpm['avg'] * 0.3 * 0.3),  # Niche bonus reduced
+                'high': (region_cpm['high'] * 0.7 + niche_cpm['high'] * 0.3 * 0.3)
+            }
+        elif region in ['india', 'indonesia', 'philippines', 'thailand', 'brazil']:
+            # Low CPM regions
+            blended_cpm = {
+                'low': region_cpm['low'],
+                'avg': (region_cpm['avg'] * 0.6 + niche_cpm['avg'] * 0.4 * 0.4),
+                'high': (region_cpm['high'] * 0.6 + niche_cpm['high'] * 0.4 * 0.4)
+            }
+        else:
+            # Higher CPM regions - niche matters more
+            blended_cpm = {
+                'low': (region_cpm['low'] * 0.5 + niche_cpm['low'] * 0.5),
+                'avg': (region_cpm['avg'] * 0.5 + niche_cpm['avg'] * 0.5),
+                'high': (region_cpm['high'] * 0.5 + niche_cpm['high'] * 0.5)
+            }
+        
+        # Engagement bonus (higher engagement = premium ad rates)
+        engagement_multiplier = 1.0
+        if engagement_rate >= 0.10:  # 10%+ engagement
+            engagement_multiplier = 1.2
+        elif engagement_rate >= 0.05:  # 5%+ engagement
+            engagement_multiplier = 1.1
+        elif engagement_rate < 0.02:  # <2% engagement
+            engagement_multiplier = 0.9
+        
+        # Seasonality adjustment (Q4 = higher ad spend)
+        month = datetime.now().month
+        if month in [10, 11, 12]:  # Q4
+            seasonality_multiplier = 1.15
+        elif month in [1, 2]:  # Q1 start (post-holiday)
+            seasonality_multiplier = 0.85
+        else:
+            seasonality_multiplier = 1.0
+        
+        # Apply multipliers
+        final_cpm = {
+            'low': round(blended_cpm['low'] * engagement_multiplier * seasonality_multiplier, 2),
+            'avg': round(blended_cpm['avg'] * engagement_multiplier * seasonality_multiplier, 2),
+            'high': round(blended_cpm['high'] * engagement_multiplier * seasonality_multiplier, 2)
+        }
+        
+        # Calculate RPM (CPM × monetization rate)
+        # RPM is what creator actually gets after YouTube's 45% cut and non-monetized views
+        monetization_rate = 0.45  # ~45% of views show ads on average
+        youtube_share = 0.55     # Creator gets 55% of ad revenue
+        
+        rpm = {
+            'low': round(final_cpm['low'] * monetization_rate * youtube_share, 2),
+            'avg': round(final_cpm['avg'] * monetization_rate * youtube_share, 2),
+            'high': round(final_cpm['high'] * monetization_rate * youtube_share, 2)
+        }
+        
+        return {
+            'cpm': final_cpm,
+            'rpm': rpm,
+            'niche': niche,
+            'region': region,
+            'engagement_multiplier': engagement_multiplier,
+            'seasonality_multiplier': seasonality_multiplier,
+            'monetization_rate': monetization_rate
+        }
+    
+    def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None, videos: List[Dict] = None) -> Dict:
         """Estimate monthly earnings based on channel stats and actual monthly views"""
         subscriber_count = stats.get('subscriber_count', 0)
         view_count = stats.get('view_count', 0)
         video_count = stats.get('video_count', 0)
-        country = stats.get('country', 'Unknown')
         
-        # Determine CPM based on country
-        is_vietnam = country.lower() in ['vn', 'vietnam', 'việt nam']
-        cpm_key = 'vietnam' if is_vietnam else 'default'
-        cpm = self.CPM_RATES[cpm_key]
+        # Detect niche and region
+        niche = self.detect_channel_niche(stats, videos)
+        region = self.get_audience_region(stats)
+        
+        # Calculate engagement rate
+        engagement_rate = 0.05  # default 5%
+        if videos:
+            total_views = sum(v.get('view_count', 0) for v in videos[:10])
+            total_likes = sum(v.get('like_count', 0) for v in videos[:10])
+            if total_views > 0:
+                engagement_rate = total_likes / total_views
+        
+        # Get RPM calculation
+        rpm_data = self.calculate_rpm(niche, region, engagement_rate)
         
         # Get estimated monthly views from actual data
         if monthly_views_data and monthly_views_data.get('estimated_monthly_views', 0) > 0:
@@ -1368,46 +1567,77 @@ Lưu ý:
             # Fallback calculation
             if video_count > 0 and view_count > 0:
                 avg_views_per_video = view_count / video_count
-                estimated_monthly_views = int(avg_views_per_video * 4)  # Assume 4 videos/month
+                estimated_monthly_views = int(avg_views_per_video * 4)
             elif subscriber_count > 0:
-                estimated_monthly_views = int(subscriber_count * 2)  # ~2x subscribers as monthly views
+                estimated_monthly_views = int(subscriber_count * 2)
             else:
                 estimated_monthly_views = 0
             calculation_method = 'fallback_estimate'
         
-        # Calculate earnings ranges
-        # Only ~45-55% of views are monetized (ads don't show on all views)
-        monetization_rate_low = 0.40
-        monetization_rate_avg = 0.50
-        monetization_rate_high = 0.55
-        
-        # Low estimate: low CPM, low monetization rate
-        earnings_low = (estimated_monthly_views * monetization_rate_low * cpm['low']) / 1000
-        
-        # Average estimate: avg CPM, avg monetization rate
-        earnings_avg = (estimated_monthly_views * monetization_rate_avg * cpm['avg']) / 1000
-        
-        # High estimate: high CPM, high monetization rate
-        earnings_high = (estimated_monthly_views * monetization_rate_high * cpm['high']) / 1000
+        # Calculate earnings using RPM
+        earnings_low = (estimated_monthly_views * rpm_data['rpm']['low']) / 1000
+        earnings_avg = (estimated_monthly_views * rpm_data['rpm']['avg']) / 1000
+        earnings_high = (estimated_monthly_views * rpm_data['rpm']['high']) / 1000
         
         return {
             'estimated_monthly_views': estimated_monthly_views,
             'monthly_views_data': monthly_views_data or {},
             'calculation_method': calculation_method,
-            'cpm_range': cpm,
-            'cpm_region': 'Việt Nam' if is_vietnam else 'Quốc tế',
-            'monetization_rate': {
-                'low': monetization_rate_low,
-                'average': monetization_rate_avg,
-                'high': monetization_rate_high
-            },
+            'niche': niche,
+            'niche_vi': self._get_niche_vietnamese(niche),
+            'audience_region': region,
+            'cpm_range': rpm_data['cpm'],
+            'rpm_range': rpm_data['rpm'],
+            'cpm_region': self._get_region_vietnamese(region),
+            'monetization_rate': rpm_data['monetization_rate'],
+            'engagement_rate': round(engagement_rate * 100, 1),
+            'seasonality': rpm_data['seasonality_multiplier'],
             'earnings_usd': {
                 'low': round(earnings_low, 2),
                 'average': round(earnings_avg, 2),
                 'high': round(earnings_high, 2)
             },
-            'earnings_formula': f"Views × Tỷ lệ quảng cáo × CPM ÷ 1000"
+            'earnings_formula': 'Views × RPM ÷ 1000 (RPM = CPM × 45% ads × 55% creator share)'
         }
+    
+    def _get_niche_vietnamese(self, niche: str) -> str:
+        """Get Vietnamese name for niche"""
+        niche_names = {
+            'finance': 'Tài chính',
+            'business': 'Kinh doanh',
+            'tech': 'Công nghệ',
+            'education': 'Giáo dục',
+            'health': 'Sức khỏe',
+            'gaming': 'Gaming',
+            'entertainment': 'Giải trí',
+            'music': 'Âm nhạc',
+            'lifestyle': 'Lifestyle',
+            'food': 'Ẩm thực',
+            'travel': 'Du lịch',
+            'news': 'Tin tức',
+            'kids': 'Thiếu nhi',
+            'default': 'Tổng hợp'
+        }
+        return niche_names.get(niche, 'Tổng hợp')
+    
+    def _get_region_vietnamese(self, region: str) -> str:
+        """Get Vietnamese name for region"""
+        region_names = {
+            'vietnam': 'Việt Nam',
+            'us': 'Hoa Kỳ',
+            'uk': 'Anh',
+            'canada': 'Canada',
+            'australia': 'Úc',
+            'germany': 'Đức',
+            'japan': 'Nhật Bản',
+            'india': 'Ấn Độ',
+            'brazil': 'Brazil',
+            'indonesia': 'Indonesia',
+            'philippines': 'Philippines',
+            'thailand': 'Thái Lan',
+            'international': 'Quốc tế'
+        }
+        return region_names.get(region, 'Quốc tế')
     
     # ==================== Main Analysis Method ====================
     
@@ -1510,8 +1740,8 @@ Lưu ý:
             channel_created=stats.get('created_at', '')
         )
         
-        # Estimate earnings with actual monthly views
-        earnings = self.estimate_earnings(stats, monthly_views_data)
+        # Estimate earnings with actual monthly views and video data for better RPM
+        earnings = self.estimate_earnings(stats, monthly_views_data, recent_videos)
         
         # Get exchange rate
         exchange_rate = self.get_exchange_rate()

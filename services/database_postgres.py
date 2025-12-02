@@ -865,7 +865,7 @@ class DatabaseServicePostgres:
                 settings.get('azure_openai_deployment_name'),
                 settings.get('azure_openai_api_version', '2024-02-15-preview'),
                 settings.get('gemini_api_key'),
-                settings.get('gemini_model', 'gemini-1.5-flash'),
+                settings.get('gemini_model', 'gemini-2.5-flash'),
                 settings.get('sender_email'),
                 settings.get('sender_password'),
                 settings.get('email_host', 'smtp.gmail.com'),
