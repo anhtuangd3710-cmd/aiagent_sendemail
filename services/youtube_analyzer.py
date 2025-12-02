@@ -66,9 +66,9 @@ class YouTubeAnalyzer:
     
     # Typical RPM ranges by region (USD per 1000 total views - what creator gets)
     # REALISTIC: 2.6M views × $0.80 RPM = $2,080
-    # Range: $0.50 - $0.80 - $1.30
+    # Range: $0.50 - $0.80 - $1.00
     ACTUAL_RPM = {
-        'vietnam': {'low': 0.50, 'avg': 0.80, 'high': 1.30},      # VN: $0.50-$1.30 RPM
+        'vietnam': {'low': 0.50, 'avg': 0.80, 'high': 1.00},      # VN: $0.50-$1.00 RPM
         'india': {'low': 0.30, 'avg': 0.55, 'high': 0.90},
         'indonesia': {'low': 0.40, 'avg': 0.70, 'high': 1.10},
         'philippines': {'low': 0.30, 'avg': 0.55, 'high': 0.90},
