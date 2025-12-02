@@ -656,70 +656,36 @@ Lưu ý:
     
     # ==================== Get Recent Videos ====================
     
-    def _get_payment_period_dates(self) -> tuple:
+    def get_recent_videos(self, channel_id: str, max_results: int = 50) -> List[Dict]:
         """
-        Get YouTube payment period dates.
-        YouTube payment cycle: Day 3 of previous month → Day 3 of current month
-        
-        Returns: (start_date, end_date) as datetime objects
-        """
-        from datetime import timedelta
-        from dateutil.relativedelta import relativedelta
-        
-        now = datetime.now()
-        current_day = now.day
-        
-        # If we're on day 1-2, the current earning period is for previous month
-        # If we're on day 3+, the current earning period is for this month
-        if current_day < 3:
-            # Day 1-2: Period is from day 3 two months ago to day 3 last month
-            end_date = now.replace(day=3) - relativedelta(months=1)
-            start_date = end_date - relativedelta(months=1)
-        else:
-            # Day 3+: Period is from day 3 last month to day 3 this month
-            end_date = now.replace(day=3)
-            start_date = end_date - relativedelta(months=1)
-        
-        return start_date, end_date
-    
-    def get_recent_videos(self, channel_id: str, max_results: int = None) -> List[Dict]:
-        """
-        Get videos from YouTube payment period (day 3 last month → day 3 this month).
-        Uses pagination to get ALL videos in the period, not limited to 50.
+        Get recent videos (last 30-60 days) to calculate monthly views.
+        Limited to 50 videos max to avoid over-fetching.
         
         Args:
             channel_id: YouTube channel ID
-            max_results: Optional limit. If None, gets all videos in payment period.
+            max_results: Max videos to fetch (default 50)
         """
         videos = []
         
-        # Method 1: YouTube Data API with pagination
+        # Method 1: YouTube Data API
         if self.api_key:
             videos = self._get_videos_via_api(channel_id, max_results)
         
         # Method 2: Scrape videos page if API not available or failed
         if not videos:
-            videos = self._scrape_recent_videos(channel_id, max_results or 50)
+            videos = self._scrape_recent_videos(channel_id, max_results)
         
         return videos
     
-    def _get_videos_via_api(self, channel_id: str, max_results: int = None) -> List[Dict]:
+    def _get_videos_via_api(self, channel_id: str, max_results: int = 50) -> List[Dict]:
         """
-        Get videos using YouTube Data API with pagination.
-        Fetches ALL videos in the payment period (day 3 → day 3).
-        
-        Args:
-            channel_id: YouTube channel ID
-            max_results: Optional limit. If None, gets all videos in payment period.
+        Get videos using YouTube Data API.
+        Only fetches up to max_results videos (default 50).
         """
         if not self.api_key:
             return []
         
         try:
-            # Get payment period dates
-            start_date, end_date = self._get_payment_period_dates()
-            logger.info(f"Payment period: {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
-            
             # First, get uploads playlist ID
             params = {
                 'part': 'contentDetails',
@@ -745,112 +711,73 @@ Lưu ý:
             if not uploads_playlist:
                 return []
             
-            # Get videos from uploads playlist with PAGINATION
-            all_video_ids = []
-            next_page_token = None
-            max_pages = 10  # Safety limit: 10 pages × 50 = 500 videos max
-            page_count = 0
-            reached_start_date = False
+            # Get videos from uploads playlist (max 50 per request)
+            params = {
+                'part': 'snippet,contentDetails',
+                'playlistId': uploads_playlist,
+                'maxResults': min(max_results, 50),
+                'key': self.api_key
+            }
             
-            while page_count < max_pages and not reached_start_date:
-                params = {
-                    'part': 'snippet,contentDetails',
-                    'playlistId': uploads_playlist,
-                    'maxResults': 50,  # Max per request
-                    'key': self.api_key
-                }
-                
-                if next_page_token:
-                    params['pageToken'] = next_page_token
-                
-                response = self.session.get(
-                    f"{self.YOUTUBE_API_BASE}/playlistItems",
-                    params=params,
-                    timeout=15
-                )
-                
-                if response.status_code != 200:
-                    break
-                
-                data = response.json()
-                
-                for item in data.get('items', []):
-                    video_id = item.get('contentDetails', {}).get('videoId', '')
-                    published_at = item.get('snippet', {}).get('publishedAt', '')
-                    
-                    if video_id and published_at:
-                        # Parse publish date
-                        try:
-                            pub_date = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
-                            pub_date = pub_date.replace(tzinfo=None)  # Remove timezone for comparison
-                            
-                            # Check if video is within payment period
-                            if pub_date >= start_date:
-                                all_video_ids.append(video_id)
-                            else:
-                                # Video is older than start_date, stop fetching
-                                reached_start_date = True
-                                break
-                        except:
-                            all_video_ids.append(video_id)  # Include if can't parse date
-                
-                # Check for next page
-                next_page_token = data.get('nextPageToken')
-                if not next_page_token:
-                    break
-                
-                page_count += 1
-                
-                # Apply max_results limit if specified
-                if max_results and len(all_video_ids) >= max_results:
-                    all_video_ids = all_video_ids[:max_results]
-                    break
+            response = self.session.get(
+                f"{self.YOUTUBE_API_BASE}/playlistItems",
+                params=params,
+                timeout=15
+            )
             
-            logger.info(f"Found {len(all_video_ids)} videos in payment period (pages fetched: {page_count + 1})")
-            
-            if not all_video_ids:
+            if response.status_code != 200:
                 return []
             
-            # Get video statistics in batches of 50
+            data = response.json()
+            video_ids = []
+            
+            for item in data.get('items', []):
+                video_id = item.get('contentDetails', {}).get('videoId', '')
+                if video_id:
+                    video_ids.append(video_id)
+            
+            logger.info(f"Found {len(video_ids)} videos from API")
+            
+            if not video_ids:
+                return []
+            
+            # Get video statistics
+            params = {
+                'part': 'snippet,statistics,contentDetails',
+                'id': ','.join(video_ids[:50]),
+                'key': self.api_key
+            }
+            
+            response = self.session.get(
+                f"{self.YOUTUBE_API_BASE}/videos",
+                params=params,
+                timeout=15
+            )
+            
+            if response.status_code != 200:
+                return []
+            
+            data = response.json()
             all_videos = []
-            for i in range(0, len(all_video_ids), 50):
-                batch_ids = all_video_ids[i:i+50]
+            
+            for item in data.get('items', []):
+                snippet = item.get('snippet', {})
+                stats = item.get('statistics', {})
+                content_details = item.get('contentDetails', {})
                 
-                params = {
-                    'part': 'snippet,statistics,contentDetails',
-                    'id': ','.join(batch_ids),
-                    'key': self.api_key
-                }
+                # Parse duration to minutes
+                duration_str = content_details.get('duration', 'PT0S')
+                duration_mins = self._parse_duration_to_minutes(duration_str)
                 
-                response = self.session.get(
-                    f"{self.YOUTUBE_API_BASE}/videos",
-                    params=params,
-                    timeout=15
-                )
-                
-                if response.status_code != 200:
-                    continue
-                
-                data = response.json()
-                
-                for item in data.get('items', []):
-                    snippet = item.get('snippet', {})
-                    stats = item.get('statistics', {})
-                    content_details = item.get('contentDetails', {})
-                    
-                    # Parse duration to minutes
-                    duration_str = content_details.get('duration', 'PT0S')
-                    duration_mins = self._parse_duration_to_minutes(duration_str)
-                    
-                    all_videos.append({
-                        'video_id': item.get('id', ''),
-                        'title': snippet.get('title', ''),
-                        'published_at': snippet.get('publishedAt', ''),
-                        'view_count': int(stats.get('viewCount', 0)),
-                        'like_count': int(stats.get('likeCount', 0)),
-                        'comment_count': int(stats.get('commentCount', 0)),
-                        'duration_minutes': duration_mins,
-                    })
+                all_videos.append({
+                    'video_id': item.get('id', ''),
+                    'title': snippet.get('title', ''),
+                    'published_at': snippet.get('publishedAt', ''),
+                    'view_count': int(stats.get('viewCount', 0)),
+                    'like_count': int(stats.get('likeCount', 0)),
+                    'comment_count': int(stats.get('commentCount', 0)),
+                    'duration_minutes': duration_mins,
+                })
             
             return all_videos
             
@@ -1009,42 +936,27 @@ Lưu ý:
     
     def calculate_monthly_views(self, videos: List[Dict], total_views: int, video_count: int, channel_created: str = '') -> Dict:
         """
-        Calculate estimated monthly views based on recent video performance.
+        Calculate estimated monthly views based on LIFETIME AVERAGE.
         
-        IMPORTANT: YouTube API only gives TOTAL views per video, not views per time period.
-        So we need to estimate monthly views based on:
-        1. Videos uploaded in the payment period (ngày 3 → ngày 3)
-        2. View decay formula for older videos
+        This is the most accurate method because:
+        - YouTube API only gives TOTAL views, not views per period
+        - Lifetime average = Total Views / Channel Age in months
+        - This accounts for both new videos AND long-tail views from old videos
         """
-        from dateutil.relativedelta import relativedelta
-        
         now = datetime.now()
         
         result = {
-            'calculation_method': '',
-            'videos_analyzed': 0,
-            'videos_in_period': 0,
-            'new_video_views': 0,
-            'estimated_old_video_views': 0,
+            'calculation_method': 'lifetime_average',
+            'videos_analyzed': len(videos) if videos else 0,
+            'videos_last_30_days': 0,
             'avg_views_per_video': 0,
             'estimated_monthly_views': 0,
             'channel_age_months': 0,
             'avg_monthly_views_lifetime': 0,
-            'payment_period': '',
         }
         
-        # Get payment period dates
-        current_day = now.day
-        if current_day < 3:
-            end_date = now.replace(day=3) - relativedelta(months=1)
-            start_date = end_date - relativedelta(months=1)
-        else:
-            end_date = now.replace(day=3)
-            start_date = end_date - relativedelta(months=1)
-        
-        result['payment_period'] = f"{start_date.strftime('%d/%m')} - {end_date.strftime('%d/%m/%Y')}"
-        
         # Calculate channel age
+        channel_age_months = 12  # Default 1 year if unknown
         if channel_created:
             try:
                 if 'T' in channel_created:
@@ -1058,119 +970,56 @@ Lưu ý:
                             continue
                 
                 channel_age_days = (now - created_date.replace(tzinfo=None)).days
-                result['channel_age_months'] = max(1, channel_age_days // 30)
+                channel_age_months = max(1, channel_age_days // 30)
             except:
                 pass
         
-        # Calculate lifetime average
-        if result['channel_age_months'] > 0 and total_views > 0:
-            result['avg_monthly_views_lifetime'] = int(total_views / result['channel_age_months'])
+        result['channel_age_months'] = channel_age_months
         
-        if not videos:
-            # No video data, use lifetime average
-            if result['avg_monthly_views_lifetime'] > 0:
-                result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
-                result['calculation_method'] = 'lifetime_average'
-            elif video_count > 0 and total_views > 0:
+        # PRIMARY METHOD: Lifetime average (most accurate)
+        # Monthly views = Total views / Channel age in months
+        if total_views > 0 and channel_age_months > 0:
+            lifetime_avg = int(total_views / channel_age_months)
+            result['avg_monthly_views_lifetime'] = lifetime_avg
+            result['estimated_monthly_views'] = lifetime_avg
+            result['calculation_method'] = 'lifetime_average'
+        
+        # Count videos in last 30 days (for display only)
+        if videos:
+            thirty_days_ago = now - timedelta(days=30)
+            videos_last_30 = 0
+            total_recent_views = 0
+            
+            for video in videos:
+                pub_date = video.get('published_at', '')
+                if pub_date:
+                    try:
+                        video_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00')).replace(tzinfo=None)
+                        if video_date >= thirty_days_ago:
+                            videos_last_30 += 1
+                            total_recent_views += video.get('view_count', 0)
+                    except:
+                        pass
+            
+            result['videos_last_30_days'] = videos_last_30
+            
+            # Calculate average views per recent video
+            if videos_last_30 > 0:
+                result['avg_views_per_video'] = int(total_recent_views / videos_last_30)
+            elif videos:
+                total_analyzed = sum(v.get('view_count', 0) for v in videos)
+                result['avg_views_per_video'] = int(total_analyzed / len(videos))
+        
+        # Fallback if no lifetime data
+        if result['estimated_monthly_views'] == 0:
+            if video_count > 0 and total_views > 0:
                 avg_per_video = total_views / video_count
                 result['avg_views_per_video'] = int(avg_per_video)
-                result['estimated_monthly_views'] = int(avg_per_video * 4)
-                result['calculation_method'] = 'total_average'
-            return result
+                # Estimate 4-8 videos per month typical
+                result['estimated_monthly_views'] = int(avg_per_video * 6)
+                result['calculation_method'] = 'video_average'
         
-        result['videos_analyzed'] = len(videos)
-        
-        # Separate videos: in payment period vs older
-        videos_in_period = []
-        older_videos = []
-        
-        for video in videos:
-            pub_date = video.get('published_at', '')
-            if pub_date:
-                try:
-                    video_date = datetime.fromisoformat(pub_date.replace('Z', '+00:00')).replace(tzinfo=None)
-                    video['parsed_date'] = video_date
-                    video['days_old'] = (now - video_date).days
-                    
-                    if video_date >= start_date:
-                        videos_in_period.append(video)
-                    else:
-                        older_videos.append(video)
-                except:
-                    pass
-        
-        result['videos_in_period'] = len(videos_in_period)
-        
-        # Method 1: Views from videos uploaded in payment period
-        # These are mostly accurate - video mới đăng thì views gần như là của tháng này
-        new_video_views = 0
-        for video in videos_in_period:
-            days_old = video.get('days_old', 1)
-            view_count = video.get('view_count', 0)
-            
-            if days_old <= 7:
-                # Video < 7 ngày: 100% views là của tháng này
-                new_video_views += view_count
-            elif days_old <= 14:
-                # Video 7-14 ngày: ~90% views là của tháng này
-                new_video_views += int(view_count * 0.9)
-            elif days_old <= 21:
-                # Video 14-21 ngày: ~80% views là của tháng này
-                new_video_views += int(view_count * 0.8)
-            else:
-                # Video 21-30 ngày: ~70% views là của tháng này
-                new_video_views += int(view_count * 0.7)
-        
-        result['new_video_views'] = new_video_views
-        
-        # Method 2: Estimate views from older videos (long-tail views)
-        # Older videos still get views but much less (typically 5-20% of their monthly average)
-        old_video_views = 0
-        if older_videos:
-            for video in older_videos:
-                view_count = video.get('view_count', 0)
-                days_old = video.get('days_old', 30)
-                
-                # Estimate monthly views based on total views and age
-                # Older videos get fewer views per month (decay)
-                if days_old > 0:
-                    # View decay: video càng cũ càng ít views/tháng
-                    months_old = days_old / 30
-                    if months_old <= 3:
-                        # 1-3 months old: ~15% of avg monthly views
-                        monthly_fraction = 0.15
-                    elif months_old <= 6:
-                        # 3-6 months: ~8% 
-                        monthly_fraction = 0.08
-                    elif months_old <= 12:
-                        # 6-12 months: ~4%
-                        monthly_fraction = 0.04
-                    else:
-                        # > 1 year: ~2%
-                        monthly_fraction = 0.02
-                    
-                    # Estimate views this month from this old video
-                    estimated_monthly = int((view_count / max(months_old, 1)) * monthly_fraction)
-                    old_video_views += estimated_monthly
-        
-        result['estimated_old_video_views'] = old_video_views
-        
-        # Total estimated monthly views
-        total_monthly = new_video_views + old_video_views
-        
-        # Sanity check: không quá 150% lifetime average (tránh overestimate)
-        if result['avg_monthly_views_lifetime'] > 0:
-            max_reasonable = int(result['avg_monthly_views_lifetime'] * 1.5)
-            if total_monthly > max_reasonable and result['channel_age_months'] > 6:
-                total_monthly = max_reasonable
-                result['calculation_method'] = 'capped_by_lifetime'
-            else:
-                result['calculation_method'] = 'period_analysis'
-        else:
-            result['calculation_method'] = 'period_analysis'
-        
-        result['estimated_monthly_views'] = total_monthly
-        
+        return result
         # Calculate average views per video
         if videos_in_period:
             result['avg_views_per_video'] = int(new_video_views / len(videos_in_period))
@@ -2129,13 +1978,12 @@ Lưu ý:
         if not channel_id:
             channel_id = self.resolve_to_channel_id(identifier)
         
-        # Get ALL videos in payment period (day 3 last month → day 3 this month)
-        # Uses pagination to fetch all videos, not limited to 50
+        # Get recent videos (max 50) for analysis
         recent_videos = []
         if channel_id:
-            logger.info(f"Getting videos in payment period for channel: {channel_id}")
-            recent_videos = self.get_recent_videos(channel_id)  # No limit - get all in period
-            logger.info(f"Found {len(recent_videos)} videos in payment period")
+            logger.info(f"Getting recent videos for channel: {channel_id}")
+            recent_videos = self.get_recent_videos(channel_id, max_results=50)
+            logger.info(f"Found {len(recent_videos)} recent videos")
         
         # Calculate monthly views based on actual data
         monthly_views_data = self.calculate_monthly_views(
