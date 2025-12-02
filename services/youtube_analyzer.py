@@ -656,8 +656,8 @@ Lưu ý:
     
     # ==================== Get Recent Videos ====================
     
-    def get_recent_videos(self, channel_id: str, max_results: int = 30) -> List[Dict]:
-        """Get recent videos from channel to calculate actual monthly views"""
+    def get_recent_videos(self, channel_id: str, max_results: int = 50) -> List[Dict]:
+        """Get recent videos from channel to calculate actual monthly views (default 50 - ~2 months for daily uploaders)"""
         videos = []
         
         # Method 1: YouTube Data API
@@ -670,8 +670,8 @@ Lưu ý:
         
         return videos
     
-    def _get_videos_via_api(self, channel_id: str, max_results: int = 30) -> List[Dict]:
-        """Get videos using YouTube Data API"""
+    def _get_videos_via_api(self, channel_id: str, max_results: int = 50) -> List[Dict]:
+        """Get videos using YouTube Data API (max 50 per request)"""
         if not self.api_key:
             return []
         
@@ -767,7 +767,7 @@ Lưu ý:
             logger.error(f"Error getting videos via API: {e}")
             return []
     
-    def _scrape_recent_videos(self, channel_id: str, max_results: int = 30) -> List[Dict]:
+    def _scrape_recent_videos(self, channel_id: str, max_results: int = 50) -> List[Dict]:
         """Scrape recent videos from channel videos page"""
         try:
             url = f"https://www.youtube.com/channel/{channel_id}/videos"
@@ -1945,11 +1945,11 @@ Lưu ý:
         if not channel_id:
             channel_id = self.resolve_to_channel_id(identifier)
         
-        # Get recent videos to calculate actual monthly views
+        # Get recent videos to calculate actual monthly views (50 videos for better accuracy)
         recent_videos = []
         if channel_id:
             logger.info(f"Getting recent videos for channel: {channel_id}")
-            recent_videos = self.get_recent_videos(channel_id, max_results=30)
+            recent_videos = self.get_recent_videos(channel_id, max_results=50)
             logger.info(f"Found {len(recent_videos)} recent videos")
         
         # Calculate monthly views based on actual data
