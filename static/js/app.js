@@ -4450,9 +4450,20 @@ function displayYouTubeResults(data) {
             'avg_estimate': 'Ước tính TB views/video × 4 video/tháng',
             'lifetime_average': 'TB views/tháng từ tổng views',
             'total_average': 'Ước tính từ tổng views/video',
-            'fallback_estimate': 'Ước tính dự phòng'
+            'fallback_estimate': 'Ước tính dự phòng',
+            'ai_analysis': '🤖 Phân tích AI'
         };
-        calculationMethod.textContent = methodMap[monthlyAnalysis.calculation_method || earnings.calculation_method] || 'Tự động';
+        const method = monthlyAnalysis.calculation_method || earnings.calculation_method;
+        calculationMethod.textContent = methodMap[method] || 'Tự động';
+        
+        // Highlight if AI
+        if (method === 'ai_analysis') {
+            calculationMethod.style.color = '#8b5cf6';
+            calculationMethod.style.fontWeight = '600';
+        } else {
+            calculationMethod.style.color = '';
+            calculationMethod.style.fontWeight = '';
+        }
     }
     
     // CPM Info
@@ -4498,6 +4509,58 @@ function displayYouTubeResults(data) {
         });
     } else if (recentVideosSection) {
         recentVideosSection.style.display = 'none';
+    }
+    
+    // AI Insights
+    const aiInsights = data.ai_insights || {};
+    const aiInsightsSection = document.getElementById('ai-insights-section');
+    
+    if (aiInsights.ai_enabled && aiInsightsSection) {
+        aiInsightsSection.style.display = 'block';
+        
+        // Confidence score
+        const aiConfidence = document.getElementById('ai-confidence');
+        if (aiConfidence) {
+            const confidence = aiInsights.confidence_score || 0;
+            aiConfidence.textContent = `${confidence}% tin cậy`;
+            
+            // Color based on confidence
+            if (confidence >= 80) {
+                aiConfidence.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            } else if (confidence >= 60) {
+                aiConfidence.style.background = 'linear-gradient(135deg, #8b5cf6 0%, #3b82f6 100%)';
+            } else {
+                aiConfidence.style.background = 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)';
+            }
+        }
+        
+        // Niche
+        const aiNiche = document.getElementById('ai-niche');
+        if (aiNiche) aiNiche.textContent = aiInsights.niche_vi || aiInsights.niche || 'Không xác định';
+        
+        // Trend
+        const aiTrend = document.getElementById('ai-trend');
+        if (aiTrend) {
+            const trendMap = {
+                'increasing': { text: '📈 Đang tăng trưởng', class: 'trend-increasing' },
+                'stable': { text: '📊 Ổn định', class: 'trend-stable' },
+                'decreasing': { text: '📉 Đang giảm', class: 'trend-decreasing' }
+            };
+            const trend = trendMap[aiInsights.growth_trend] || trendMap['stable'];
+            aiTrend.textContent = trend.text;
+            aiTrend.className = 'ai-value ' + trend.class;
+        }
+        
+        // Analysis text
+        const aiAnalysisText = document.getElementById('ai-analysis-text');
+        if (aiAnalysisText && aiInsights.analysis) {
+            aiAnalysisText.querySelector('p').textContent = aiInsights.analysis;
+            aiAnalysisText.style.display = 'flex';
+        } else if (aiAnalysisText) {
+            aiAnalysisText.style.display = 'none';
+        }
+    } else if (aiInsightsSection) {
+        aiInsightsSection.style.display = 'none';
     }
     
     // Disclaimer

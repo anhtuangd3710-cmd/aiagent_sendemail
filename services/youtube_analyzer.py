@@ -6,6 +6,7 @@ Comprehensive analysis using multiple methods:
 3. Noembed API (free proxy)
 4. Web scraping with ytInitialData extraction
 5. Third-party APIs (SocialBlade style)
+6. AI-powered analysis using Google Gemini for better accuracy
 """
 
 import re
@@ -16,6 +17,9 @@ from typing import Dict, Optional, List, Tuple
 from datetime import datetime, timedelta
 from urllib.parse import quote, urlparse, parse_qs
 import os
+
+import google.generativeai as genai
+from config.settings import GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +64,155 @@ class YouTubeAnalyzer:
         })
         self._exchange_rate_cache = None
         self._exchange_rate_time = None
+        
+        # Initialize Google Gemini for AI-powered analysis
+        try:
+            genai.configure(api_key=GEMINI_API_KEY)
+            self.ai_model = genai.GenerativeModel(
+                model_name=GEMINI_MODEL,
+                generation_config={
+                    "temperature": 0.3,
+                    "top_p": 0.95,
+                    "top_k": 40,
+                    "max_output_tokens": 2048,
+                }
+            )
+            self.ai_enabled = True
+            logger.info("Gemini AI initialized for YouTube analysis")
+        except Exception as e:
+            logger.warning(f"Gemini AI initialization failed: {e}")
+            self.ai_model = None
+            self.ai_enabled = False
+    
+    # ==================== AI-Powered Analysis ====================
+    
+    def analyze_with_ai(self, channel_data: Dict, videos: List[Dict], monthly_data: Dict) -> Dict:
+        """Use Gemini AI to analyze channel and provide more accurate earnings estimate"""
+        if not self.ai_enabled or not self.ai_model:
+            return None
+        
+        try:
+            # Prepare data summary for AI
+            channel_summary = {
+                'name': channel_data.get('title', 'Unknown'),
+                'subscribers': channel_data.get('subscriber_count', 0),
+                'total_views': channel_data.get('view_count', 0),
+                'video_count': channel_data.get('video_count', 0),
+                'country': channel_data.get('country', 'Unknown'),
+                'description': channel_data.get('description', '')[:300],
+                'channel_age_months': monthly_data.get('channel_age_months', 0),
+            }
+            
+            # Video performance summary
+            video_summary = []
+            for v in videos[:10]:
+                video_summary.append({
+                    'title': v.get('title', '')[:50],
+                    'views': v.get('view_count', 0),
+                    'published': v.get('published_text', '') or v.get('published_at', '')[:10] if v.get('published_at') else ''
+                })
+            
+            prompt = f"""Bạn là chuyên gia phân tích YouTube với kinh nghiệm về monetization và CPM rates.
+
+Phân tích kênh YouTube sau và ước tính thu nhập hàng tháng:
+
+**Thông tin kênh:**
+- Tên: {channel_summary['name']}
+- Subscribers: {channel_summary['subscribers']:,}
+- Tổng views: {channel_summary['total_views']:,}
+- Số video: {channel_summary['video_count']}
+- Quốc gia: {channel_summary['country']}
+- Tuổi kênh: {channel_summary['channel_age_months']} tháng
+- Mô tả: {channel_summary['description']}
+
+**Video gần đây (10 video mới nhất):**
+{json.dumps(video_summary, ensure_ascii=False, indent=2)}
+
+**Dữ liệu tính toán:**
+- Views 30 ngày qua: {monthly_data.get('views_last_30_days', 0):,}
+- Video 30 ngày qua: {monthly_data.get('videos_last_30_days', 0)}
+- Views TB/video: {monthly_data.get('avg_views_per_video', 0):,}
+- Views TB hàng tháng (lifetime): {monthly_data.get('avg_monthly_views_lifetime', 0):,}
+
+Hãy phân tích và trả về JSON với format sau:
+{{
+    "niche": "tên niche/category của kênh",
+    "niche_vi": "tên niche bằng tiếng Việt", 
+    "estimated_monthly_views": số views ước tính hàng tháng (số nguyên),
+    "cpm_low": CPM thấp (USD, số thập phân),
+    "cpm_avg": CPM trung bình (USD, số thập phân),
+    "cpm_high": CPM cao (USD, số thập phân),
+    "earnings_low": thu nhập thấp USD/tháng (số thập phân),
+    "earnings_avg": thu nhập TB USD/tháng (số thập phân),
+    "earnings_high": thu nhập cao USD/tháng (số thập phân),
+    "monetization_rate": tỷ lệ video được monetize (0.0-1.0),
+    "growth_trend": "increasing/stable/decreasing",
+    "confidence_score": độ tin cậy 0-100,
+    "analysis": "phân tích ngắn gọn bằng tiếng Việt (2-3 câu)"
+}}
+
+Lưu ý:
+- CPM phụ thuộc vào niche và quốc gia người xem
+- Kênh Việt Nam thường có CPM thấp hơn ($0.3-$2.5)
+- Chỉ ~40-55% views được monetize
+- Xem xét tần suất đăng video và engagement
+- Trả về CHỈ JSON, không có text khác"""
+
+            # Call Gemini API
+            response = self.ai_model.generate_content(prompt)
+            ai_response = response.text.strip()
+            
+            # Extract JSON from response
+            json_match = re.search(r'\{[\s\S]*\}', ai_response)
+            if json_match:
+                ai_result = json.loads(json_match.group())
+                logger.info(f"Gemini AI analysis successful: {ai_result.get('niche', 'unknown')}")
+                return ai_result
+            
+        except json.JSONDecodeError as e:
+            logger.warning(f"Gemini AI response JSON parse error: {e}")
+        except Exception as e:
+            logger.error(f"Gemini AI analysis error: {e}")
+        
+        return None
+    
+    def get_ai_enhanced_earnings(self, ai_analysis: Dict, base_earnings: Dict, exchange_rate: float) -> Dict:
+        """Combine AI analysis with base earnings for enhanced accuracy"""
+        if not ai_analysis:
+            return None
+        
+        try:
+            ai_earnings = {
+                'estimated_monthly_views': ai_analysis.get('estimated_monthly_views', 0),
+                'niche': ai_analysis.get('niche', 'unknown'),
+                'niche_vi': ai_analysis.get('niche_vi', 'Không xác định'),
+                'cpm_range': {
+                    'low': ai_analysis.get('cpm_low', 1.0),
+                    'avg': ai_analysis.get('cpm_avg', 3.0),
+                    'high': ai_analysis.get('cpm_high', 6.0)
+                },
+                'monetization_rate': ai_analysis.get('monetization_rate', 0.5),
+                'earnings_usd': {
+                    'low': round(ai_analysis.get('earnings_low', 0), 2),
+                    'average': round(ai_analysis.get('earnings_avg', 0), 2),
+                    'high': round(ai_analysis.get('earnings_high', 0), 2)
+                },
+                'earnings_vnd': {
+                    'low': round(ai_analysis.get('earnings_low', 0) * exchange_rate),
+                    'average': round(ai_analysis.get('earnings_avg', 0) * exchange_rate),
+                    'high': round(ai_analysis.get('earnings_high', 0) * exchange_rate)
+                },
+                'growth_trend': ai_analysis.get('growth_trend', 'stable'),
+                'confidence_score': ai_analysis.get('confidence_score', 50),
+                'ai_analysis': ai_analysis.get('analysis', ''),
+                'source': 'ai_enhanced'
+            }
+            
+            return ai_earnings
+            
+        except Exception as e:
+            logger.error(f"Error processing AI earnings: {e}")
+            return None
     
     # ==================== URL Parsing ====================
     
@@ -1209,20 +1362,53 @@ class YouTubeAnalyzer:
             'high': round(earnings['earnings_usd']['high'] * exchange_rate)
         }
         
+        # AI-Powered Analysis for enhanced accuracy
+        ai_analysis = None
+        ai_earnings = None
+        
+        if self.ai_enabled:
+            logger.info("Running AI analysis for enhanced accuracy...")
+            ai_analysis = self.analyze_with_ai(stats, recent_videos, monthly_views_data)
+            
+            if ai_analysis:
+                ai_earnings = self.get_ai_enhanced_earnings(ai_analysis, earnings, exchange_rate)
+                method_used = method_used + '+ai' if method_used != 'none' else 'ai'
+                logger.info(f"AI analysis complete. Niche: {ai_analysis.get('niche', 'unknown')}, Confidence: {ai_analysis.get('confidence_score', 0)}%")
+        
         # Get current month name
         month_names_vn = ['', 'Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
                          'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12']
         current_month = datetime.now().month
         current_year = datetime.now().year
         
-        return {
+        # Use AI earnings if available and confident, otherwise use base calculation
+        final_earnings = earnings
+        final_earnings_vnd = earnings_vnd
+        
+        if ai_earnings and ai_analysis and ai_analysis.get('confidence_score', 0) >= 60:
+            final_earnings = {
+                'estimated_monthly_views': ai_earnings['estimated_monthly_views'],
+                'cpm_range': ai_earnings['cpm_range'],
+                'cpm_region': earnings.get('cpm_region', 'Quốc tế'),
+                'monetization_rate': {
+                    'low': ai_earnings['monetization_rate'] - 0.1,
+                    'average': ai_earnings['monetization_rate'],
+                    'high': ai_earnings['monetization_rate'] + 0.05
+                },
+                'earnings_usd': ai_earnings['earnings_usd'],
+                'calculation_method': 'ai_analysis',
+                'earnings_formula': earnings.get('earnings_formula', '')
+            }
+            final_earnings_vnd = ai_earnings['earnings_vnd']
+        
+        result = {
             'success': True,
             'channel': stats,
             'recent_videos': recent_videos[:10],  # Include top 10 recent videos
             'monthly_analysis': {
                 'current_month': f"{month_names_vn[current_month]} {current_year}",
-                'estimated_monthly_views': earnings['estimated_monthly_views'],
-                'calculation_method': earnings['calculation_method'],
+                'estimated_monthly_views': final_earnings.get('estimated_monthly_views', earnings.get('estimated_monthly_views', 0)),
+                'calculation_method': final_earnings.get('calculation_method', earnings.get('calculation_method', '')),
                 'videos_analyzed': monthly_views_data.get('videos_analyzed', 0),
                 'videos_last_30_days': monthly_views_data.get('videos_last_30_days', 0),
                 'views_last_30_days': monthly_views_data.get('views_last_30_days', 0),
@@ -1230,13 +1416,31 @@ class YouTubeAnalyzer:
                 'channel_age_months': monthly_views_data.get('channel_age_months', 0),
                 'avg_monthly_views_lifetime': monthly_views_data.get('avg_monthly_views_lifetime', 0),
             },
-            'earnings': earnings,
-            'earnings_vnd': earnings_vnd,
+            'earnings': final_earnings,
+            'earnings_vnd': final_earnings_vnd,
             'exchange_rate': exchange_rate,
             'method': method_used,
             'analyzed_at': datetime.now().isoformat(),
-            'disclaimer': f'Ước tính dựa trên CPM ${earnings["cpm_range"]["low"]}-${earnings["cpm_range"]["high"]}/1000 views ({earnings["cpm_region"]}). Thu nhập thực tế phụ thuộc vào niche, vùng miền người xem, tỷ lệ quảng cáo và nhiều yếu tố khác.'
+            'disclaimer': f'Ước tính dựa trên CPM ${final_earnings["cpm_range"]["low"]}-${final_earnings["cpm_range"]["high"]}/1000 views ({final_earnings.get("cpm_region", "Quốc tế")}). Thu nhập thực tế phụ thuộc vào niche, vùng miền người xem, tỷ lệ quảng cáo và nhiều yếu tố khác.'
         }
+        
+        # Add AI insights if available
+        if ai_analysis:
+            result['ai_insights'] = {
+                'niche': ai_analysis.get('niche', 'unknown'),
+                'niche_vi': ai_analysis.get('niche_vi', 'Không xác định'),
+                'growth_trend': ai_analysis.get('growth_trend', 'stable'),
+                'confidence_score': ai_analysis.get('confidence_score', 0),
+                'analysis': ai_analysis.get('analysis', ''),
+                'ai_enabled': True
+            }
+        else:
+            result['ai_insights'] = {
+                'ai_enabled': False,
+                'reason': 'AI analysis not available'
+            }
+        
+        return result
 
 
 # Singleton
