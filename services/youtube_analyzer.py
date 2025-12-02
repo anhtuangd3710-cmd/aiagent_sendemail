@@ -938,9 +938,8 @@ Lưu ý:
         """
         Calculate estimated monthly views.
         
-        Priority:
-        1. Views from videos uploaded in last 30 days (most accurate)
-        2. Lifetime average as fallback
+        IMPORTANT: YouTube API chỉ cho TỔNG views của video, không phải views/tháng.
+        Cách tính chính xác nhất: dùng lifetime average (total views / tuổi kênh)
         """
         now = datetime.now()
         
@@ -948,6 +947,7 @@ Lưu ý:
             'calculation_method': '',
             'videos_analyzed': len(videos) if videos else 0,
             'videos_last_30_days': 0,
+            'views_30_days': 0,
             'avg_views_per_video': 0,
             'estimated_monthly_views': 0,
             'channel_age_months': 0,
@@ -975,11 +975,15 @@ Lưu ý:
         
         result['channel_age_months'] = channel_age_months
         
-        # Calculate lifetime average (for reference)
+        # PRIMARY METHOD: Lifetime average (most accurate for established channels)
+        # Monthly views = Total views / Channel age in months
         if total_views > 0 and channel_age_months > 0:
-            result['avg_monthly_views_lifetime'] = int(total_views / channel_age_months)
+            lifetime_avg = int(total_views / channel_age_months)
+            result['avg_monthly_views_lifetime'] = lifetime_avg
+            result['estimated_monthly_views'] = lifetime_avg
+            result['calculation_method'] = 'lifetime_average'
         
-        # PRIMARY: Count videos and views in last 30 days
+        # Count videos in last 30 days (for display)
         if videos:
             thirty_days_ago = now - timedelta(days=30)
             videos_last_30 = []
@@ -996,23 +1000,14 @@ Lưu ý:
             
             result['videos_last_30_days'] = len(videos_last_30)
             
+            # Calculate total views of recent videos (for display only)
             if videos_last_30:
-                # Use views from recent videos
                 total_recent_views = sum(v.get('view_count', 0) for v in videos_last_30)
+                result['views_30_days'] = total_recent_views
                 result['avg_views_per_video'] = int(total_recent_views / len(videos_last_30))
-                result['estimated_monthly_views'] = total_recent_views
-                result['calculation_method'] = 'recent_videos'
-            else:
-                # No recent videos, use lifetime average
-                result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
-                result['calculation_method'] = 'lifetime_average'
-                if videos:
-                    total_analyzed = sum(v.get('view_count', 0) for v in videos)
-                    result['avg_views_per_video'] = int(total_analyzed / len(videos))
-        else:
-            # No video data, use lifetime average
-            result['estimated_monthly_views'] = result['avg_monthly_views_lifetime']
-            result['calculation_method'] = 'lifetime_average'
+            elif videos:
+                total_analyzed = sum(v.get('view_count', 0) for v in videos)
+                result['avg_views_per_video'] = int(total_analyzed / len(videos))
         
         # Fallback
         if result['estimated_monthly_views'] == 0:
