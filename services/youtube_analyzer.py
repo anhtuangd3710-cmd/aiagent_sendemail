@@ -1436,6 +1436,94 @@ Lưu ý:
         
         return 'default'
     
+    def estimate_international_audience(self, channel_data: Dict, videos: List[Dict] = None) -> Dict:
+        """
+        Estimate percentage of international (Tier 1) audience.
+        
+        Factors that indicate international audience:
+        1. English titles/description
+        2. High subscriber count (viral potential)
+        3. Content type (music, gaming = more international)
+        4. Channel using English or bilingual
+        5. High views/subscriber ratio (viral content reaches globally)
+        """
+        title = channel_data.get('title', '').lower()
+        description = channel_data.get('description', '').lower()
+        keywords = channel_data.get('keywords', '').lower()
+        subscribers = channel_data.get('subscriber_count', 0)
+        total_views = channel_data.get('view_count', 0)
+        
+        international_score = 0
+        indicators = []
+        
+        # Check for English content
+        english_words = ['official', 'channel', 'subscribe', 'video', 'watch', 'music', 'gaming', 
+                        'reaction', 'review', 'tutorial', 'how to', 'best', 'top', 'new']
+        english_count = sum(1 for word in english_words if word in title or word in description)
+        if english_count >= 3:
+            international_score += 25
+            indicators.append("Nội dung tiếng Anh")
+        elif english_count >= 1:
+            international_score += 10
+        
+        # Check subscriber count (larger channels have more international reach)
+        if subscribers >= 1000000:  # 1M+
+            international_score += 30
+            indicators.append("Kênh lớn (1M+ subs) - tiếp cận quốc tế cao")
+        elif subscribers >= 500000:  # 500K+
+            international_score += 20
+            indicators.append("Kênh lớn (500K+ subs)")
+        elif subscribers >= 100000:  # 100K+
+            international_score += 10
+        
+        # Check views/subscriber ratio (viral content)
+        if subscribers > 0 and total_views > 0:
+            views_per_sub = total_views / subscribers
+            if views_per_sub >= 200:  # Very viral
+                international_score += 20
+                indicators.append("Tỷ lệ views/sub cao - nội dung viral")
+            elif views_per_sub >= 100:
+                international_score += 10
+        
+        # Check for international content types
+        intl_content = ['music', 'mv', 'official', 'gaming', 'gameplay', 'reaction', 
+                       'asmr', 'animation', 'shorts', 'meme']
+        if any(word in title or word in description or word in keywords for word in intl_content):
+            international_score += 15
+            indicators.append("Thể loại có khán giả quốc tế")
+        
+        # Check video titles for English
+        if videos:
+            english_titles = 0
+            for video in videos[:10]:
+                vtitle = video.get('title', '').lower()
+                if any(word in vtitle for word in english_words):
+                    english_titles += 1
+            if english_titles >= 5:
+                international_score += 15
+                indicators.append("Video titles bằng tiếng Anh")
+            elif english_titles >= 2:
+                international_score += 5
+        
+        # Cap at 70% for Vietnamese channels (they still have majority VN audience)
+        international_percent = min(international_score, 70)
+        
+        # Determine audience mix
+        if international_percent >= 40:
+            audience_mix = 'mixed_international'  # Significant international
+        elif international_percent >= 20:
+            audience_mix = 'mixed_local'  # Some international
+        else:
+            audience_mix = 'local'  # Primarily local
+        
+        return {
+            'international_percent': international_percent,
+            'local_percent': 100 - international_percent,
+            'audience_mix': audience_mix,
+            'indicators': indicators,
+            'estimated_tier1_percent': min(international_percent * 0.6, 40),  # ~60% of intl is Tier 1
+        }
+    
     def get_audience_region(self, channel_data: Dict) -> str:
         """Estimate primary audience region based on channel info"""
         country = channel_data.get('country', '').lower()
@@ -1470,7 +1558,8 @@ Lưu ý:
         # Default to international
         return 'international'
     
-    def calculate_rpm(self, niche: str, region: str, engagement_rate: float = 0.05, avg_video_length_mins: float = 10) -> Dict:
+    def calculate_rpm(self, niche: str, region: str, engagement_rate: float = 0.05, 
+                      avg_video_length_mins: float = 10, international_data: Dict = None) -> Dict:
         """
         Calculate RPM (Revenue Per Mille) using ACTUAL RPM data.
         
@@ -1479,71 +1568,107 @@ Lưu ý:
         
         Key factors:
         1. Audience geography (most important - 90% of variation)
-        2. Channel niche (adds 10-30% for premium niches in Tier 1 countries)
-        3. Video length (8+ mins = mid-roll ads = +20-40% RPM)
-        4. Engagement rate (higher = slightly better fill rate)
-        5. Seasonality (Q4 = +10-20%)
+        2. International audience % (VN channel with 30% US audience = much higher RPM)
+        3. Channel niche (adds 10-30% for premium niches)
+        4. Video length (8+ mins = mid-roll ads = +20-40% RPM)
+        5. Engagement rate (higher = slightly better fill rate)
+        6. Seasonality (Q4 = +10-20%)
         """
-        # Use ACTUAL RPM data (what creators really get)
+        # Get base RPM for the region
         base_rpm = self.ACTUAL_RPM.get(region, self.ACTUAL_RPM['international'])
         
-        # Start with base RPM for the region
-        rpm = {
-            'low': base_rpm['low'],
-            'avg': base_rpm['avg'],
-            'high': base_rpm['high']
-        }
+        # Calculate BLENDED RPM based on audience mix
+        # This is KEY for channels with international audience
+        if international_data and international_data.get('international_percent', 0) > 10:
+            intl_percent = international_data['international_percent'] / 100
+            tier1_percent = international_data.get('estimated_tier1_percent', intl_percent * 60) / 100
+            
+            # Get Tier 1 RPM (US average)
+            tier1_rpm = self.ACTUAL_RPM.get('us', {'low': 1.2, 'avg': 3.0, 'high': 8.0})
+            # Get other international RPM
+            other_intl_rpm = self.ACTUAL_RPM.get('international', {'low': 0.3, 'avg': 1.0, 'high': 3.0})
+            
+            # Blend: local_rpm × local% + tier1_rpm × tier1% + other_intl × other_intl%
+            local_percent = 1 - intl_percent
+            other_intl_percent = intl_percent - tier1_percent
+            
+            rpm = {
+                'low': (base_rpm['low'] * local_percent + 
+                       tier1_rpm['low'] * tier1_percent + 
+                       other_intl_rpm['low'] * other_intl_percent),
+                'avg': (base_rpm['avg'] * local_percent + 
+                       tier1_rpm['avg'] * tier1_percent + 
+                       other_intl_rpm['avg'] * other_intl_percent),
+                'high': (base_rpm['high'] * local_percent + 
+                        tier1_rpm['high'] * tier1_percent + 
+                        other_intl_rpm['high'] * other_intl_percent)
+            }
+        else:
+            rpm = {
+                'low': base_rpm['low'],
+                'avg': base_rpm['avg'],
+                'high': base_rpm['high']
+            }
         
-        # Niche multiplier - only significant for Tier 1 countries
+        # Niche multiplier - affects all regions but scaled
         niche_multipliers = {
-            'finance': 1.5,
-            'business': 1.4,
-            'tech': 1.3,
-            'education': 1.2,
-            'health': 1.25,
-            'travel': 1.15,
-            'news': 1.1,
-            'lifestyle': 1.1,
-            'food': 1.05,
-            'gaming': 0.9,
+            'finance': 1.8,      # Finance/crypto = highest CPM
+            'business': 1.5,
+            'tech': 1.4,
+            'education': 1.3,
+            'health': 1.35,
+            'travel': 1.25,
+            'news': 1.2,
+            'lifestyle': 1.15,
+            'food': 1.1,
+            'gaming': 1.0,       # Gaming = average
             'entertainment': 0.95,
-            'music': 0.85,
-            'kids': 0.6,  # Limited ads
+            'music': 0.9,
+            'kids': 0.5,         # Limited ads
             'default': 1.0
         }
         
         niche_mult = niche_multipliers.get(niche, 1.0)
         
-        # Niche only affects Tier 1 countries significantly
-        if region in ['us', 'uk', 'canada', 'australia', 'germany']:
-            rpm['avg'] *= niche_mult
-            rpm['high'] *= niche_mult
+        # Apply niche multiplier based on region and international mix
+        if international_data and international_data.get('international_percent', 0) > 20:
+            # Channels with significant international audience benefit more from niche
+            niche_effect = (niche_mult - 1) * 0.5  # 50% of niche effect
+        elif region in ['us', 'uk', 'canada', 'australia', 'germany']:
+            niche_effect = niche_mult - 1  # Full effect
         elif region in ['japan']:
-            rpm['avg'] *= (1 + (niche_mult - 1) * 0.5)  # Half effect
-            rpm['high'] *= (1 + (niche_mult - 1) * 0.5)
-        # For low CPM regions (VN, India, etc.), niche has minimal effect
+            niche_effect = (niche_mult - 1) * 0.5
         else:
-            rpm['avg'] *= (1 + (niche_mult - 1) * 0.1)  # 10% of niche effect
-            rpm['high'] *= (1 + (niche_mult - 1) * 0.15)
+            # Low CPM regions - niche still has some effect
+            niche_effect = (niche_mult - 1) * 0.2  # 20% of niche effect
         
-        # Video length bonus (8+ mins = mid-roll ads)
-        if avg_video_length_mins >= 8:
+        rpm['avg'] *= (1 + niche_effect)
+        rpm['high'] *= (1 + niche_effect * 1.2)  # High estimate benefits more
+        
+        # Video length bonus (8+ mins = mid-roll ads) - VERY IMPORTANT
+        if avg_video_length_mins >= 20:
+            length_multiplier = 1.5  # +50% for long videos (multiple mid-rolls)
+        elif avg_video_length_mins >= 12:
+            length_multiplier = 1.4  # +40%
+        elif avg_video_length_mins >= 8:
             length_multiplier = 1.3  # +30% for mid-roll eligible
         elif avg_video_length_mins >= 5:
-            length_multiplier = 1.1  # Slightly better
+            length_multiplier = 1.1
         else:
-            length_multiplier = 1.0  # Short videos - only pre-roll
+            length_multiplier = 1.0  # Shorts/short videos - only pre-roll
         
         rpm['avg'] *= length_multiplier
         rpm['high'] *= length_multiplier
         
-        # Engagement bonus (very small effect)
-        if engagement_rate >= 0.08:  # 8%+ engagement
-            engagement_multiplier = 1.1
-        elif engagement_rate >= 0.04:  # 4%+ engagement
+        # Engagement bonus
+        if engagement_rate >= 0.10:  # 10%+ engagement - excellent
+            engagement_multiplier = 1.15
+        elif engagement_rate >= 0.06:  # 6%+ engagement
+            engagement_multiplier = 1.10
+        elif engagement_rate >= 0.03:  # 3%+ engagement
             engagement_multiplier = 1.05
-        elif engagement_rate < 0.02:  # <2% engagement
-            engagement_multiplier = 0.95
+        elif engagement_rate < 0.01:  # <1% engagement
+            engagement_multiplier = 0.90
         else:
             engagement_multiplier = 1.0
         
@@ -1552,13 +1677,17 @@ Lưu ý:
         
         # Seasonality adjustment (Q4 = higher ad spend)
         month = datetime.now().month
-        if month in [11, 12]:  # Nov-Dec (Black Friday, Christmas)
-            seasonality_multiplier = 1.20
+        if month == 12:  # December (Christmas)
+            seasonality_multiplier = 1.30
+        elif month == 11:  # November (Black Friday)
+            seasonality_multiplier = 1.25
         elif month == 10:  # October
             seasonality_multiplier = 1.10
-        elif month in [1, 2]:  # Jan-Feb (post-holiday slump)
+        elif month == 1:  # January (worst month)
+            seasonality_multiplier = 0.70
+        elif month == 2:  # February
             seasonality_multiplier = 0.80
-        elif month in [6, 7, 8]:  # Summer (slightly lower)
+        elif month in [6, 7, 8]:  # Summer
             seasonality_multiplier = 0.95
         else:
             seasonality_multiplier = 1.0
@@ -1590,13 +1719,14 @@ Lưu ý:
             'engagement_multiplier': engagement_multiplier,
             'seasonality_multiplier': seasonality_multiplier,
             'video_length_multiplier': length_multiplier,
+            'international_data': international_data,
             'monetization_rate': 0.25  # Approximate % of views that generate revenue
         }
     
     def estimate_earnings(self, stats: Dict, monthly_views_data: Dict = None, videos: List[Dict] = None) -> Dict:
         """
         Estimate monthly earnings based on channel stats and actual monthly views.
-        Uses ACTUAL RPM data for more accurate estimates.
+        Uses ACTUAL RPM data with international audience consideration for more accurate estimates.
         """
         subscriber_count = stats.get('subscriber_count', 0)
         view_count = stats.get('view_count', 0)
@@ -1605,6 +1735,9 @@ Lưu ý:
         # Detect niche and region
         niche = self.detect_channel_niche(stats, videos)
         region = self.get_audience_region(stats)
+        
+        # Estimate international audience (KEY for accurate earnings)
+        international_data = self.estimate_international_audience(stats, videos)
         
         # Calculate engagement rate (likes/views)
         engagement_rate = 0.04  # default 4%
@@ -1621,8 +1754,8 @@ Lưu ý:
             if durations:
                 avg_video_length = sum(durations) / len(durations)
         
-        # Get RPM calculation with all factors
-        rpm_data = self.calculate_rpm(niche, region, engagement_rate, avg_video_length)
+        # Get RPM calculation with ALL factors including international audience
+        rpm_data = self.calculate_rpm(niche, region, engagement_rate, avg_video_length, international_data)
         
         # Get estimated monthly views from actual data
         if monthly_views_data and monthly_views_data.get('estimated_monthly_views', 0) > 0:
@@ -1645,14 +1778,21 @@ Lưu ý:
         earnings_avg = (estimated_monthly_views * rpm_data['rpm']['avg']) / 1000
         earnings_high = (estimated_monthly_views * rpm_data['rpm']['high']) / 1000
         
-        # Add some context about the estimate
-        region_note = ""
+        # Build detailed notes
+        notes = []
         if region == 'vietnam':
-            region_note = "Khán giả VN có CPM rất thấp ($0.1-0.5 CPM, ~$0.02-0.10 RPM thực tế)"
-        elif region in ['india', 'indonesia', 'philippines']:
-            region_note = "Khán giả SEA/South Asia có CPM thấp"
-        elif region in ['us', 'uk', 'canada', 'australia']:
-            region_note = "Khán giả Tier 1 có CPM cao"
+            if international_data['international_percent'] >= 30:
+                notes.append(f"~{international_data['international_percent']}% khán giả quốc tế → RPM cao hơn")
+            else:
+                notes.append("Khán giả chủ yếu VN → RPM thấp ($0.02-0.15)")
+        
+        if international_data['indicators']:
+            notes.extend(international_data['indicators'][:2])
+        
+        if rpm_data.get('video_length_multiplier', 1) >= 1.3:
+            notes.append("Video dài → có mid-roll ads (+30-50% RPM)")
+        
+        region_note = " | ".join(notes) if notes else ""
         
         return {
             'estimated_monthly_views': estimated_monthly_views,
@@ -1661,6 +1801,7 @@ Lưu ý:
             'niche': niche,
             'niche_vi': self._get_niche_vietnamese(niche),
             'audience_region': region,
+            'international_audience': international_data,
             'cpm_range': rpm_data['cpm'],
             'rpm_range': rpm_data['rpm'],
             'cpm_region': self._get_region_vietnamese(region),
