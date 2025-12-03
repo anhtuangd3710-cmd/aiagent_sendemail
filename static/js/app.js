@@ -4878,6 +4878,9 @@ function initChatbot() {
     // Setup export buttons
     const exportEmailBtn = document.getElementById('export-email-btn');
     const exportCvBtn = document.getElementById('export-cv-btn');
+    const exportAllBtn = document.getElementById('export-all-btn');
+    const exportEmailsBtn = document.getElementById('export-emails-btn');
+    const exportCvsBtn = document.getElementById('export-cvs-btn');
     
     if (exportEmailBtn) {
         exportEmailBtn.addEventListener('click', () => exportToExcel('email'));
@@ -4885,6 +4888,19 @@ function initChatbot() {
     
     if (exportCvBtn) {
         exportCvBtn.addEventListener('click', () => exportToExcel('cv'));
+    }
+    
+    // Sidebar export buttons
+    if (exportAllBtn) {
+        exportAllBtn.addEventListener('click', () => exportToExcel('all'));
+    }
+    
+    if (exportEmailsBtn) {
+        exportEmailsBtn.addEventListener('click', () => exportToExcel('email'));
+    }
+    
+    if (exportCvsBtn) {
+        exportCvsBtn.addEventListener('click', () => exportToExcel('cv'));
     }
 }
 
@@ -4921,8 +4937,13 @@ async function sendChatMessage() {
             addChatMessage(data.message, 'bot');
             
             // Show chart if available
-            if (data.chart_data) {
+            if (data.show_chart && data.chart_data) {
                 renderChart(data.chart_data);
+            }
+            
+            // Show export options if user wants to export
+            if (data.show_export) {
+                showExportOptions();
             }
             
             // Refresh stats
@@ -5120,7 +5141,10 @@ function renderChart(chartData) {
     const container = document.getElementById('chatbot-chart-container');
     const canvas = document.getElementById('chatbot-chart');
     
-    if (!container || !canvas) return;
+    if (!container || !canvas) {
+        console.error('Chart container or canvas not found');
+        return;
+    }
     
     container.style.display = 'block';
     
@@ -5129,7 +5153,44 @@ function renderChart(chartData) {
         chatbotChart.destroy();
     }
     
+    // Handle overview type with multiple charts - pick the first one
+    let actualChartData = chartData;
+    if (chartData.type === 'overview') {
+        // For overview, prioritize email_stats chart
+        if (chartData.email_stats) {
+            actualChartData = chartData.email_stats;
+        } else if (chartData.sentiment_stats) {
+            actualChartData = chartData.sentiment_stats;
+        } else if (chartData.cv_stats) {
+            actualChartData = chartData.cv_stats;
+        }
+    }
+    
     const ctx = canvas.getContext('2d');
+    
+    // Build chart data based on format from API
+    let data;
+    if (actualChartData.datasets) {
+        // Bar/Line chart with datasets
+        data = {
+            labels: actualChartData.labels || [],
+            datasets: actualChartData.datasets
+        };
+    } else if (actualChartData.data) {
+        // Pie/Doughnut chart with simple data array
+        data = {
+            labels: actualChartData.labels || [],
+            datasets: [{
+                data: actualChartData.data,
+                backgroundColor: actualChartData.colors || ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        };
+    } else {
+        console.error('Invalid chart data format:', actualChartData);
+        return;
+    }
     
     // Chart options based on type
     const options = {
@@ -5142,12 +5203,13 @@ function renderChart(chartData) {
                     padding: 20,
                     font: {
                         size: 12
-                    }
+                    },
+                    usePointStyle: true
                 }
             },
             title: {
                 display: true,
-                text: chartData.title || 'Biểu đồ',
+                text: actualChartData.title || 'Biểu đồ',
                 font: {
                     size: 16,
                     weight: 'bold'
@@ -5160,7 +5222,7 @@ function renderChart(chartData) {
     };
     
     // Add scale options for bar/line charts
-    if (chartData.type === 'bar' || chartData.type === 'line') {
+    if (actualChartData.type === 'bar' || actualChartData.type === 'line') {
         options.scales = {
             y: {
                 beginAtZero: true,
@@ -5172,10 +5234,13 @@ function renderChart(chartData) {
     }
     
     chatbotChart = new Chart(ctx, {
-        type: chartData.type || 'bar',
-        data: chartData.data,
+        type: actualChartData.type || 'doughnut',
+        data: data,
         options: options
     });
+    
+    // Scroll to chart
+    container.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
 function hideChart() {
@@ -5191,11 +5256,8 @@ function hideChart() {
 
 async function exportToExcel(type) {
     try {
-        const btn = document.getElementById(`export-${type}-btn`);
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xuất...';
-        }
+        // Show loading in chat
+        addChatMessage(`⏳ Đang tạo file Excel ${type === 'all' ? 'tất cả dữ liệu' : (type === 'email' ? 'Email' : 'CV')}...`, 'bot');
         
         const response = await fetch(`/api/chatbot/export?type=${type}`);
         
@@ -5210,23 +5272,52 @@ async function exportToExcel(type) {
             window.URL.revokeObjectURL(url);
             a.remove();
             
-            addChatMessage(`✅ Đã xuất file Excel ${type === 'email' ? 'Email' : 'CV'} thành công!`, 'bot');
+            addChatMessage(`✅ Đã xuất file Excel thành công! File đang được tải về...`, 'bot');
         } else {
-            const data = await response.json();
-            addChatMessage(`❌ Lỗi xuất Excel: ${data.error || 'Unknown error'}`, 'bot');
+            let errorMsg = 'Unknown error';
+            try {
+                const data = await response.json();
+                errorMsg = data.error || data.message || errorMsg;
+            } catch (e) {
+                errorMsg = response.statusText;
+            }
+            addChatMessage(`❌ Lỗi xuất Excel: ${errorMsg}`, 'bot');
         }
     } catch (error) {
         console.error('Export error:', error);
         addChatMessage('❌ Không thể xuất file Excel. Vui lòng thử lại.', 'bot');
-    } finally {
-        const btn = document.getElementById(`export-${type}-btn`);
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = type === 'email' 
-                ? '<i class="fas fa-file-excel"></i> Xuất Excel Email'
-                : '<i class="fas fa-file-excel"></i> Xuất Excel CV';
-        }
     }
+}
+
+function showExportOptions() {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    const exportDiv = document.createElement('div');
+    exportDiv.className = 'chat-message bot';
+    exportDiv.innerHTML = `
+        <div class="message-avatar">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content">
+            <div class="message-text">
+                <p>📥 Chọn loại dữ liệu muốn xuất:</p>
+                <div class="export-options" style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;">
+                    <button class="btn btn-primary btn-sm export-option-btn" onclick="exportToExcel('all')">
+                        <i class="fas fa-file-excel"></i> Xuất tất cả
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm export-option-btn" onclick="exportToExcel('email')">
+                        <i class="fas fa-envelope"></i> Chỉ Email
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm export-option-btn" onclick="exportToExcel('cv')">
+                        <i class="fas fa-file-alt"></i> Chỉ CV
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    container.appendChild(exportDiv);
+    container.scrollTop = container.scrollHeight;
 }
 
 function clearChatHistory() {

@@ -527,8 +527,14 @@ Phân bố điểm CV:
             
             # Determine if user wants a chart or export
             query_lower = query.lower()
-            wants_chart = any(word in query_lower for word in ['biểu đồ', 'chart', 'vẽ', 'đồ thị', 'graph', 'visual'])
+            wants_chart = any(word in query_lower for word in ['biểu đồ', 'chart', 'vẽ', 'đồ thị', 'graph', 'visual', 'thống kê'])
             wants_export = any(word in query_lower for word in ['excel', 'xuất', 'export', 'download', 'tải'])
+            
+            # Determine chart type and get chart data if needed
+            chart_type = self._determine_chart_type(query_lower)
+            chart_data = None
+            if wants_chart:
+                chart_data = self.get_chart_data(user_id, chart_type, is_admin=is_admin)
             
             # Generate AI response
             ai_response = self._generate_ai_response(context, user_settings)
@@ -544,7 +550,8 @@ Phân bố điểm CV:
                 'is_admin': is_admin,
                 'show_chart': wants_chart,
                 'show_export': wants_export,
-                'chart_type': self._determine_chart_type(query_lower),
+                'chart_type': chart_type,
+                'chart_data': chart_data,
                 'timestamp': datetime.now().isoformat()
             }
             
