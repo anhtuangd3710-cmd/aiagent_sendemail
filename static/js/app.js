@@ -4905,6 +4905,12 @@ function initChatbot() {
     
     // Setup session management
     setupChatSessions();
+    
+    // Setup close chart button
+    const closeChartBtn = document.getElementById('close-chart-btn');
+    if (closeChartBtn) {
+        closeChartBtn.addEventListener('click', hideChart);
+    }
 }
 
 // Chat Session Management

@@ -870,10 +870,43 @@ Tôi có thể giúp gì thêm cho bạn?"""
         elif chart_type == 'bar':
             # Top recipients bar chart
             top_recipients = email_stats.get('top_recipients', [])
+            
+            # Fallback if no recipients
+            if not top_recipients:
+                return {
+                    'type': 'bar',
+                    'title': '📊 Top người nhận email nhiều nhất',
+                    'labels': ['Chưa có dữ liệu'],
+                    'datasets': [{
+                        'label': 'Email đã gửi',
+                        'data': [0],
+                        'backgroundColor': 'rgba(99, 102, 241, 0.8)',
+                        'borderColor': '#6366f1',
+                        'borderWidth': 2,
+                        'borderRadius': 8
+                    }]
+                }
+            
+            # Get proper labels - use name if available, otherwise use email
+            labels = []
+            for r in top_recipients:
+                name = r.get('name', '').strip()
+                email = r.get('email', '').strip()
+                if name:
+                    labels.append(name[:20])
+                elif email:
+                    # Shorten email if too long
+                    if len(email) > 20:
+                        labels.append(email[:17] + '...')
+                    else:
+                        labels.append(email)
+                else:
+                    labels.append('Unknown')
+            
             return {
                 'type': 'bar',
                 'title': '📊 Top người nhận email nhiều nhất',
-                'labels': [r.get('name', r.get('email', ''))[:20] for r in top_recipients],
+                'labels': labels,
                 'datasets': [
                     {
                         'label': 'Email đã gửi',
