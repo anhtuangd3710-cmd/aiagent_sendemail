@@ -26,7 +26,7 @@ class ChatbotService:
         try:
             emails = self.database.query_raw(
                 """SELECT e.*, u.username as user_name, u.email as user_email 
-                   FROM emails e 
+                   FROM sent_emails e 
                    LEFT JOIN users u ON e.user_id = u.id 
                    ORDER BY e.sent_at DESC"""
             )
