@@ -712,49 +712,51 @@ Tôi có thể giúp gì thêm cho bạn?"""
             return 'overview'  # Default to doughnut overview
     
     def generate_excel_data(self, user_id: int, data_type: str = 'all', is_admin: bool = False) -> bytes:
-        """Generate Excel file with email/CV data (all data if admin)"""
+        """Generate Excel file with email/CV data (all data if admin) using xlsxwriter"""
         try:
-            import openpyxl
-            from openpyxl.utils.dataframe import dataframe_to_rows
-            from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-            from openpyxl.chart import BarChart, PieChart, LineChart, Reference
+            import xlsxwriter
             
-            wb = openpyxl.Workbook()
+            output = io.BytesIO()
+            wb = xlsxwriter.Workbook(output, {'in_memory': True})
             
             # Styles
-            header_font = Font(bold=True, color='FFFFFF')
-            header_fill = PatternFill(start_color='4A90D9', end_color='4A90D9', fill_type='solid')
-            border = Border(
-                left=Side(style='thin'),
-                right=Side(style='thin'),
-                top=Side(style='thin'),
-                bottom=Side(style='thin')
-            )
+            header_format = wb.add_format({
+                'bold': True,
+                'font_color': 'white',
+                'bg_color': '#4A90D9',
+                'border': 1,
+                'align': 'center',
+                'valign': 'vcenter'
+            })
+            cell_format = wb.add_format({
+                'border': 1,
+                'valign': 'vcenter'
+            })
+            bold_format = wb.add_format({'bold': True, 'font_size': 14})
+            warning_format = wb.add_format({'bold': True, 'font_size': 12, 'font_color': 'red'})
             
             if data_type in ['all', 'emails']:
                 # Email sheet
-                ws_emails = wb.active
-                ws_emails.title = 'Emails đã gửi' + (' (Tất cả)' if is_admin else '')
+                sheet_name = 'Emails đã gửi' + (' (Tất cả)' if is_admin else '')
+                ws_emails = wb.add_worksheet(sheet_name[:31])  # Excel sheet name max 31 chars
                 
                 if is_admin:
                     emails = self._get_all_emails_admin()
                 else:
                     emails = self.database.get_all_emails(user_id)
                 
-                # Headers - add user column for admin
+                # Headers
                 if is_admin:
                     headers = ['ID', 'User', 'Ngày gửi', 'Người nhận', 'Email', 'Tiêu đề', 'Mục đích', 'Đã phản hồi', 'Cảm xúc', 'Quyết định']
                 else:
                     headers = ['ID', 'Ngày gửi', 'Người nhận', 'Email', 'Tiêu đề', 'Mục đích', 'Đã phản hồi', 'Cảm xúc', 'Quyết định']
-                for col, header in enumerate(headers, 1):
-                    cell = ws_emails.cell(row=1, column=col, value=header)
-                    cell.font = header_font
-                    cell.fill = header_fill
-                    cell.border = border
-                    cell.alignment = Alignment(horizontal='center')
+                
+                for col, header in enumerate(headers):
+                    ws_emails.write(0, col, header, header_format)
+                    ws_emails.set_column(col, col, 15)  # Default width
                 
                 # Data
-                for row_num, email in enumerate(emails, 2):
+                for row_num, email in enumerate(emails, 1):
                     analysis = email.get('analysis', {})
                     if isinstance(analysis, str):
                         try:
@@ -763,127 +765,102 @@ Tôi có thể giúp gì thêm cho bạn?"""
                             analysis = {}
                     
                     col_offset = 1 if is_admin else 0
-                    ws_emails.cell(row=row_num, column=1, value=email.get('id'))
+                    ws_emails.write(row_num, 0, email.get('id'), cell_format)
                     if is_admin:
-                        ws_emails.cell(row=row_num, column=2, value=email.get('user_name', email.get('user_email', '')))
-                    ws_emails.cell(row=row_num, column=2 + col_offset, value=str(email.get('sent_at', ''))[:19])
-                    ws_emails.cell(row=row_num, column=3 + col_offset, value=email.get('recipient_name', ''))
-                    ws_emails.cell(row=row_num, column=4 + col_offset, value=email.get('recipient_email', ''))
-                    ws_emails.cell(row=row_num, column=5 + col_offset, value=email.get('subject', ''))
-                    ws_emails.cell(row=row_num, column=6 + col_offset, value=email.get('purpose', ''))
-                    ws_emails.cell(row=row_num, column=7 + col_offset, value='Có' if email.get('response_received') else 'Không')
-                    ws_emails.cell(row=row_num, column=8 + col_offset, value=analysis.get('sentiment', ''))
-                    ws_emails.cell(row=row_num, column=9 + col_offset, value=analysis.get('decision', ''))
+                        ws_emails.write(row_num, 1, email.get('user_name', email.get('user_email', '')), cell_format)
+                    ws_emails.write(row_num, 1 + col_offset, str(email.get('sent_at', ''))[:19], cell_format)
+                    ws_emails.write(row_num, 2 + col_offset, email.get('recipient_name', ''), cell_format)
+                    ws_emails.write(row_num, 3 + col_offset, email.get('recipient_email', ''), cell_format)
+                    ws_emails.write(row_num, 4 + col_offset, email.get('subject', ''), cell_format)
+                    ws_emails.write(row_num, 5 + col_offset, email.get('purpose', ''), cell_format)
+                    ws_emails.write(row_num, 6 + col_offset, 'Có' if email.get('response_received') else 'Không', cell_format)
+                    ws_emails.write(row_num, 7 + col_offset, analysis.get('sentiment', ''), cell_format)
+                    ws_emails.write(row_num, 8 + col_offset, analysis.get('decision', ''), cell_format)
                 
-                # Auto-fit columns
-                for col in ws_emails.columns:
-                    max_length = 0
-                    column = col[0].column_letter
-                    for cell in col:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = min(len(str(cell.value)), 50)
-                        except:
-                            pass
-                    adjusted_width = (max_length + 2)
-                    ws_emails.column_dimensions[column].width = adjusted_width
+                # Adjust column widths
+                ws_emails.set_column(0, 0, 8)   # ID
+                ws_emails.set_column(1 + col_offset, 1 + col_offset, 18)  # Date
+                ws_emails.set_column(4 + col_offset, 4 + col_offset, 30)  # Subject
             
             if data_type in ['all', 'cv']:
                 # CV sheet
-                ws_cv = wb.create_sheet('Đánh giá CV' + (' (Tất cả)' if is_admin else '')) if data_type == 'all' else wb.active
-                if data_type != 'all':
-                    ws_cv.title = 'Đánh giá CV' + (' (Tất cả)' if is_admin else '')
+                sheet_name = 'Đánh giá CV' + (' (Tất cả)' if is_admin else '')
+                ws_cv = wb.add_worksheet(sheet_name[:31])
                 
                 if is_admin:
                     evaluations = self._get_all_cv_evaluations_admin()
                 else:
                     evaluations = self.database.get_all_cv_evaluations(user_id)
                 
-                # Headers - add user column for admin
+                # Headers
                 if is_admin:
                     cv_headers = ['ID', 'User', 'Ngày đánh giá', 'Tên ứng viên', 'Email', 'Vị trí', 'Điểm', 'Đạt yêu cầu', 'Đã gửi email']
                 else:
                     cv_headers = ['ID', 'Ngày đánh giá', 'Tên ứng viên', 'Email', 'Vị trí', 'Điểm', 'Đạt yêu cầu', 'Đã gửi email']
-                for col, header in enumerate(cv_headers, 1):
-                    cell = ws_cv.cell(row=1, column=col, value=header)
-                    cell.font = header_font
-                    cell.fill = header_fill
-                    cell.border = border
-                    cell.alignment = Alignment(horizontal='center')
+                
+                for col, header in enumerate(cv_headers):
+                    ws_cv.write(0, col, header, header_format)
+                    ws_cv.set_column(col, col, 15)
                 
                 # Data
-                for row_num, cv in enumerate(evaluations, 2):
+                for row_num, cv in enumerate(evaluations, 1):
                     col_offset = 1 if is_admin else 0
-                    ws_cv.cell(row=row_num, column=1, value=cv.get('id'))
+                    ws_cv.write(row_num, 0, cv.get('id'), cell_format)
                     if is_admin:
-                        ws_cv.cell(row=row_num, column=2, value=cv.get('user_name', cv.get('user_email', '')))
-                    ws_cv.cell(row=row_num, column=2 + col_offset, value=str(cv.get('created_at', ''))[:19])
-                    ws_cv.cell(row=row_num, column=3 + col_offset, value=cv.get('candidate_name', ''))
-                    ws_cv.cell(row=row_num, column=4 + col_offset, value=cv.get('candidate_email', ''))
-                    ws_cv.cell(row=row_num, column=5 + col_offset, value=cv.get('job_title', ''))
-                    ws_cv.cell(row=row_num, column=6 + col_offset, value=cv.get('overall_score', 0))
-                    ws_cv.cell(row=row_num, column=7 + col_offset, value='Có' if cv.get('is_qualified') else 'Không')
-                    ws_cv.cell(row=row_num, column=8 + col_offset, value='Có' if cv.get('email_sent') else 'Không')
-                
-                # Auto-fit columns
-                for col in ws_cv.columns:
-                    max_length = 0
-                    column = col[0].column_letter
-                    for cell in col:
-                        try:
-                            if len(str(cell.value)) > max_length:
-                                max_length = min(len(str(cell.value)), 50)
-                        except:
-                            pass
-                    adjusted_width = (max_length + 2)
-                    ws_cv.column_dimensions[column].width = adjusted_width
+                        ws_cv.write(row_num, 1, cv.get('user_name', cv.get('user_email', '')), cell_format)
+                    ws_cv.write(row_num, 1 + col_offset, str(cv.get('created_at', ''))[:19], cell_format)
+                    ws_cv.write(row_num, 2 + col_offset, cv.get('candidate_name', ''), cell_format)
+                    ws_cv.write(row_num, 3 + col_offset, cv.get('candidate_email', ''), cell_format)
+                    ws_cv.write(row_num, 4 + col_offset, cv.get('job_title', ''), cell_format)
+                    ws_cv.write(row_num, 5 + col_offset, cv.get('overall_score', 0), cell_format)
+                    ws_cv.write(row_num, 6 + col_offset, 'Có' if cv.get('is_qualified') else 'Không', cell_format)
+                    ws_cv.write(row_num, 7 + col_offset, 'Có' if cv.get('email_sent') else 'Không', cell_format)
             
             # Statistics sheet
-            ws_stats = wb.create_sheet('Thống kê' + (' (Toàn hệ thống)' if is_admin else ''))
+            sheet_name = 'Thống kê' + (' (Toàn hệ thống)' if is_admin else '')
+            ws_stats = wb.add_worksheet(sheet_name[:31])
             email_stats = self.get_email_statistics(user_id, is_admin=is_admin)
             cv_stats = self.get_cv_statistics(user_id, is_admin=is_admin)
             
+            ws_stats.set_column(0, 0, 30)
+            ws_stats.set_column(1, 1, 15)
+            
             # Admin note
             if is_admin:
-                ws_stats.cell(row=1, column=1, value='⚠️ DỮ LIỆU TOÀN HỆ THỐNG (ADMIN VIEW)').font = Font(bold=True, size=12, color='FF0000')
-                start_row = 3
+                ws_stats.write(0, 0, '⚠️ DỮ LIỆU TOÀN HỆ THỐNG (ADMIN VIEW)', warning_format)
+                start_row = 2
             else:
-                start_row = 1
+                start_row = 0
             
             # Email stats
-            ws_stats.cell(row=start_row, column=1, value='THỐNG KÊ EMAIL').font = Font(bold=True, size=14)
-            ws_stats.cell(row=start_row+1, column=1, value='Tổng số email đã gửi:')
-            ws_stats.cell(row=start_row+1, column=2, value=email_stats.get('total_sent', 0))
-            ws_stats.cell(row=start_row+2, column=1, value='Số email đã nhận phản hồi:')
-            ws_stats.cell(row=start_row+2, column=2, value=email_stats.get('responded', 0))
-            ws_stats.cell(row=start_row+3, column=1, value='Số email đang chờ:')
-            ws_stats.cell(row=start_row+3, column=2, value=email_stats.get('pending', 0))
-            ws_stats.cell(row=start_row+4, column=1, value='Tỷ lệ phản hồi:')
-            ws_stats.cell(row=start_row+4, column=2, value=f"{email_stats.get('response_rate', 0)}%")
+            ws_stats.write(start_row, 0, 'THỐNG KÊ EMAIL', bold_format)
+            ws_stats.write(start_row + 1, 0, 'Tổng số email đã gửi:')
+            ws_stats.write(start_row + 1, 1, email_stats.get('total_sent', 0))
+            ws_stats.write(start_row + 2, 0, 'Số email đã nhận phản hồi:')
+            ws_stats.write(start_row + 2, 1, email_stats.get('responded', 0))
+            ws_stats.write(start_row + 3, 0, 'Số email đang chờ:')
+            ws_stats.write(start_row + 3, 1, email_stats.get('pending', 0))
+            ws_stats.write(start_row + 4, 0, 'Tỷ lệ phản hồi:')
+            ws_stats.write(start_row + 4, 1, f"{email_stats.get('response_rate', 0)}%")
             
             # CV stats
-            ws_stats.cell(row=start_row+6, column=1, value='THỐNG KÊ CV').font = Font(bold=True, size=14)
-            ws_stats.cell(row=start_row+7, column=1, value='Tổng số CV đã đánh giá:')
-            ws_stats.cell(row=start_row+7, column=2, value=cv_stats.get('total', 0))
-            ws_stats.cell(row=start_row+8, column=1, value='Số ứng viên đạt yêu cầu:')
-            ws_stats.cell(row=start_row+8, column=2, value=cv_stats.get('qualified', 0))
-            ws_stats.cell(row=start_row+9, column=1, value='Điểm trung bình:')
-            ws_stats.cell(row=start_row+9, column=2, value=cv_stats.get('average_score', 0))
+            ws_stats.write(start_row + 6, 0, 'THỐNG KÊ CV', bold_format)
+            ws_stats.write(start_row + 7, 0, 'Tổng số CV đã đánh giá:')
+            ws_stats.write(start_row + 7, 1, cv_stats.get('total', 0))
+            ws_stats.write(start_row + 8, 0, 'Số ứng viên đạt yêu cầu:')
+            ws_stats.write(start_row + 8, 1, cv_stats.get('qualified', 0))
+            ws_stats.write(start_row + 9, 0, 'Điểm trung bình:')
+            ws_stats.write(start_row + 9, 1, cv_stats.get('average_score', 0))
             
-            # Auto-fit
-            ws_stats.column_dimensions['A'].width = 30
-            ws_stats.column_dimensions['B'].width = 15
-            
-            # Save to bytes
-            output = io.BytesIO()
-            wb.save(output)
+            # Close workbook and get bytes
+            wb.close()
             output.seek(0)
             
             return output.getvalue()
             
         except ImportError:
-            logger.error("openpyxl not installed")
-            raise Exception("Thư viện openpyxl chưa được cài đặt. Chạy: pip install openpyxl")
+            logger.error("xlsxwriter not installed")
+            raise Exception("Thư viện xlsxwriter chưa được cài đặt. Chạy: pip install xlsxwriter")
         except Exception as e:
             logger.error(f"Error generating Excel: {e}")
             raise e
