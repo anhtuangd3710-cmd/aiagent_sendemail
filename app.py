@@ -819,6 +819,7 @@ def send_email_from_chat():
         user_email_service.smtp_port = int(user_settings.get('email_port', 587))
         
         sender_name = user_settings.get('sender_name', request.current_user.get('name', 'User'))
+        sender_email = user_settings.get('sender_email')
         
         # Send email
         send_success = user_email_service.send_email(
@@ -828,20 +829,24 @@ def send_email_from_chat():
         )
         
         if send_success:
-            # Track the email
-            email_id = database.create_email_tracking(
-                user_id=user_id,
-                recipient_email=to_email,
-                recipient_name=to_name or to_email.split('@')[0],
-                subject=subject,
-                body=body,
-                purpose=purpose,
-                tone=tone,
-                language=language
-            )
-            
-            # Invalidate cache
-            server_cache.delete(f'emails:{user_id}')
+            # Track the email - save to sent_emails table
+            try:
+                email_id = database.save_sent_email(
+                    user_id=user_id,
+                    sender_name=sender_name,
+                    sender_email=sender_email,
+                    recipient_name=to_name or to_email.split('@')[0],
+                    recipient_email=to_email,
+                    subject=subject,
+                    body=body,
+                    purpose=purpose
+                )
+                
+                # Invalidate cache
+                server_cache.delete(f'emails:{user_id}')
+            except Exception as track_err:
+                print(f"Warning: Email sent but tracking failed: {track_err}")
+                email_id = None
             
             return jsonify({
                 "success": True,
