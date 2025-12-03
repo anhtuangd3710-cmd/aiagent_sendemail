@@ -7301,6 +7301,69 @@ select:focus-visible {
     color: white;
 }
 
+/* Sync Button - Blue highlighted */
+.suggestion-btn.sync-btn {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    border-color: #3b82f6;
+    color: white;
+}
+
+.suggestion-btn.sync-btn:hover {
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+}
+
+.suggestion-btn.sync-btn i {
+    color: white;
+}
+
+/* Sync Result Styling */
+.sync-result {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1px solid #86efac;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.sync-result h4 {
+    margin: 0 0 12px 0;
+    color: #166534;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sync-result ul {
+    margin: 0 0 12px 0;
+    padding-left: 20px;
+}
+
+.sync-result li {
+    margin-bottom: 6px;
+    color: #374151;
+}
+
+.sync-result p {
+    margin: 0;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.sync-error {
+    background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+    border: 1px solid #fca5a5;
+    border-radius: 12px;
+    padding: 16px;
+    color: #991b1b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 /* Chat Chart Container */
 .chat-chart-container {
     padding: 16px 20px;
@@ -8673,6 +8736,71 @@ select:focus-visible {
     font-size: 13px;
     line-height: 1.6;
     border: 1px solid #e2e8f0;
+}
+
+/* Email Sent Summary Card (for history view) */
+.email-sent-card {
+    background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+    border: 1px solid #86efac;
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.email-sent-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: #166534;
+}
+
+.email-sent-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.email-sent-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #374151;
+}
+
+.email-sent-row i {
+    width: 16px;
+    color: #6b7280;
+}
+
+.email-status-badge {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.email-status-badge.success {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.email-status-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.email-sent-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.email-sent-actions .btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
 }
 
 /* Email Sent Success */

@@ -5323,17 +5323,23 @@ function renderSessionMessages(data) {
     // Add messages using DocumentFragment for better performance
     const fragment = document.createDocumentFragment();
     data.messages.forEach(msg => {
-        addChatMessage(msg.content, msg.role, false);
+        // Check if this is an email sent confirmation message (contains email_sent data)
+        if (msg.email_sent) {
+            // Render as email sent summary, not form
+            addEmailSentSummary(msg.email_sent);
+        } else {
+            addChatMessage(msg.content, msg.role, false);
+        }
         
         // Render chart inline if message has chart data
         if (msg.has_chart && msg.chart_data) {
             addChartMessage(msg.chart_data);
         }
         
-        // Render email form if message has email form
-        if (msg.has_email_form) {
-            addEmailFormMessage(msg.email_data);
-        }
+        // Don't render email form when loading history - forms are for new emails only
+        // if (msg.has_email_form) {
+        //     addEmailFormMessage(msg.email_data);
+        // }
     });
 }
 
@@ -5845,6 +5851,64 @@ function renderInlineChart(canvasId, chartData) {
     }
 }
 
+// Add email sent summary (for history view - no form, just info)
+function addEmailSentSummary(emailData) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message bot email-sent-summary';
+    
+    const recipient = emailData.recipient_email || emailData.to_email || 'N/A';
+    const subject = emailData.subject || 'Không có tiêu đề';
+    const sentAt = emailData.sent_at ? formatDateTime(emailData.sent_at) : 'N/A';
+    const emailId = emailData.id || emailData.email_id;
+    const status = emailData.response_received ? 'Đã có phản hồi' : 'Chờ phản hồi';
+    const statusClass = emailData.response_received ? 'success' : 'pending';
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content email-sent-card">
+            <div class="email-sent-header">
+                <i class="fas fa-check-circle" style="color: #10b981;"></i>
+                <span>Email đã gửi thành công</span>
+            </div>
+            <div class="email-sent-info">
+                <div class="email-sent-row">
+                    <i class="fas fa-user"></i>
+                    <span><strong>Người nhận:</strong> ${escapeHtml(recipient)}</span>
+                </div>
+                <div class="email-sent-row">
+                    <i class="fas fa-envelope"></i>
+                    <span><strong>Tiêu đề:</strong> ${escapeHtml(subject)}</span>
+                </div>
+                <div class="email-sent-row">
+                    <i class="fas fa-clock"></i>
+                    <span><strong>Gửi lúc:</strong> ${sentAt}</span>
+                </div>
+                <div class="email-sent-row">
+                    <i class="fas fa-info-circle"></i>
+                    <span><strong>Trạng thái:</strong> <span class="email-status-badge ${statusClass}">${status}</span></span>
+                </div>
+            </div>
+            ${emailId ? `
+            <div class="email-sent-actions">
+                <button class="btn btn-sm btn-outline" onclick="checkEmailStatus(${emailId})">
+                    <i class="fas fa-sync-alt"></i> Kiểm tra phản hồi
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="viewEmailDetails(${emailId})">
+                    <i class="fas fa-eye"></i> Xem chi tiết
+                </button>
+            </div>
+            ` : ''}
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+}
+
 // Email form message counter
 let emailFormCounter = 0;
 
@@ -6279,10 +6343,50 @@ async function sendEmailAfterReview(formId) {
     }
 }
 
+// Sync responses from email server
+async function syncEmailResponses() {
+    try {
+        const response = await fetch('/api/check-responses', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error syncing responses:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Check email status and response
-async function checkEmailStatus(emailId) {
+async function checkEmailStatus(emailId, skipSync = false) {
     try {
         addChatMessage('Đang kiểm tra trạng thái email...', 'user');
+        
+        // First, sync responses from email server (unless skipped)
+        if (!skipSync) {
+            const syncingMsgId = addChatMessage('🔄 Đang đồng bộ phản hồi từ email server...', 'bot');
+            const syncResult = await syncEmailResponses();
+            
+            // Update the syncing message
+            const syncMsgElement = document.getElementById(syncingMsgId);
+            if (syncMsgElement) {
+                const contentDiv = syncMsgElement.querySelector('.message-content');
+                if (contentDiv) {
+                    if (syncResult.success && syncResult.results) {
+                        const found = syncResult.results.responses_found || 0;
+                        const processed = syncResult.results.responses_processed || 0;
+                        contentDiv.innerHTML = `✅ Đã đồng bộ: tìm thấy ${found} phản hồi mới, xử lý ${processed} phản hồi.`;
+                    } else if (syncResult.error) {
+                        contentDiv.innerHTML = `⚠️ Không thể đồng bộ: ${syncResult.error}`;
+                    } else {
+                        contentDiv.innerHTML = `✅ Đã kiểm tra email server.`;
+                    }
+                }
+            }
+        }
         
         const response = await fetch(`/api/emails/${emailId}/status`);
         const data = await response.json();
@@ -6530,6 +6634,59 @@ window.checkEmailConfigAndShowForm = checkEmailConfigAndShowForm;
 window.checkEmailStatus = checkEmailStatus;
 window.viewEmailDetails = viewEmailDetails;
 window.replyToEmail = replyToEmail;
+window.syncEmailResponses = syncEmailResponses;
+window.syncAndShowStatus = syncAndShowStatus;
+
+// Sync all responses and show summary in chat
+async function syncAndShowStatus() {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    const syncingMsgId = addChatMessage('🔄 Đang đồng bộ phản hồi từ email server...', 'bot');
+    
+    try {
+        const syncResult = await syncEmailResponses();
+        
+        // Update the syncing message with results
+        const syncMsgElement = document.getElementById(syncingMsgId);
+        if (syncMsgElement) {
+            const contentDiv = syncMsgElement.querySelector('.message-content');
+            if (contentDiv) {
+                if (syncResult.success && syncResult.results) {
+                    const pending = syncResult.results.pending_emails || 0;
+                    const found = syncResult.results.responses_found || 0;
+                    const processed = syncResult.results.responses_processed || 0;
+                    
+                    let html = `<div class="sync-result">`;
+                    html += `<h4><i class="fas fa-check-circle" style="color: #10b981;"></i> Đồng bộ hoàn tất!</h4>`;
+                    html += `<ul>`;
+                    html += `<li>📧 Email đang chờ phản hồi: <strong>${pending}</strong></li>`;
+                    html += `<li>📬 Phản hồi mới tìm thấy: <strong>${found}</strong></li>`;
+                    html += `<li>✅ Phản hồi đã xử lý: <strong>${processed}</strong></li>`;
+                    html += `</ul>`;
+                    
+                    if (found > 0) {
+                        html += `<p style="color: #10b981;"><i class="fas fa-envelope-open"></i> Có phản hồi mới! Kiểm tra tab Email hoặc hỏi chatbot để xem chi tiết.</p>`;
+                    } else if (pending > 0) {
+                        html += `<p style="color: #f59e0b;"><i class="fas fa-clock"></i> Chưa có phản hồi mới. Các email vẫn đang chờ phản hồi.</p>`;
+                    } else {
+                        html += `<p><i class="fas fa-inbox"></i> Không có email nào đang chờ phản hồi.</p>`;
+                    }
+                    
+                    html += `</div>`;
+                    contentDiv.innerHTML = html;
+                } else if (syncResult.error) {
+                    contentDiv.innerHTML = `<div class="sync-error"><i class="fas fa-exclamation-triangle"></i> Lỗi đồng bộ: ${syncResult.error}</div>`;
+                } else {
+                    contentDiv.innerHTML = `<div class="sync-result"><i class="fas fa-check"></i> Đã kiểm tra email server.</div>`;
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Error in syncAndShowStatus:', error);
+        addChatMessage('❌ Lỗi kết nối khi đồng bộ phản hồi.', 'bot');
+    }
+}
 
 function formatChatContent(content) {
     // Convert markdown-like formatting to HTML
