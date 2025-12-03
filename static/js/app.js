@@ -4918,7 +4918,7 @@ async function sendChatMessage() {
         
         if (data.success) {
             // Add bot response
-            addChatMessage(data.response, 'bot');
+            addChatMessage(data.message, 'bot');
             
             // Show chart if available
             if (data.chart_data) {
@@ -4928,7 +4928,7 @@ async function sendChatMessage() {
             // Refresh stats
             loadQuickStats();
         } else {
-            addChatMessage('Xin lỗi, đã có lỗi xảy ra: ' + (data.error || 'Unknown error'), 'bot');
+            addChatMessage('Xin lỗi, đã có lỗi xảy ra: ' + (data.error || data.message || 'Unknown error'), 'bot');
         }
     } catch (error) {
         removeChatMessage(loadingId);
@@ -4945,7 +4945,7 @@ function addChatMessage(content, type, isLoading = false) {
     
     const messageId = 'msg-' + Date.now();
     const messageDiv = document.createElement('div');
-    messageDiv.className = `chat-message ${type}-message`;
+    messageDiv.className = `chat-message ${type}`;
     messageDiv.id = messageId;
     
     const avatar = type === 'bot' 
