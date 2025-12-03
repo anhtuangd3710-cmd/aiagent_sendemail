@@ -3,7 +3,7 @@ Email AI Agent - Flask Web Application
 Modern UI for email automation with Azure OpenAI or Google Gemini
 With Realtime WebSocket support, Authentication, and Auto-start Monitor
 """
-from flask import Flask, render_template, request, jsonify, Response, make_response, render_template_string
+from flask import Flask, render_template, request, jsonify, Response, make_response, render_template_string, send_file
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 import json
@@ -11,6 +11,7 @@ import threading
 import queue
 import atexit
 import os
+import io
 from datetime import datetime
 
 from services.email_service import EmailService
@@ -2287,6 +2288,174 @@ REJECTION_SUCCESS_HTML = """
 </body>
 </html>
 """
+
+
+# ==================== Chatbot API ====================
+
+from services.chatbot_service import ChatbotService
+chatbot_service = None
+
+def get_chatbot_service():
+    """Lazy initialization of chatbot service"""
+    global chatbot_service
+    if chatbot_service is None:
+        chatbot_service = ChatbotService(database, ai_agent)
+    return chatbot_service
+
+
+@app.route('/api/chatbot/query', methods=['POST'])
+@login_required
+def chatbot_query():
+    """Process chatbot query and return response with data"""
+    try:
+        user_id = request.current_user['id']
+        is_admin = request.current_user.get('role') == 'admin'
+        data = request.json
+        query = data.get('query', '').strip()
+        
+        if not query:
+            return jsonify({
+                "success": False,
+                "error": "Vui lòng nhập câu hỏi"
+            }), 400
+        
+        # Get user settings for AI
+        user_settings = database.get_user_settings(user_id)
+        
+        service = get_chatbot_service()
+        result = service.process_query(user_id, query, user_settings, is_admin=is_admin)
+        
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/stats', methods=['GET'])
+@login_required
+def chatbot_stats():
+    """Get all statistics for chatbot display"""
+    try:
+        user_id = request.current_user['id']
+        is_admin = request.current_user.get('role') == 'admin'
+        time_range = request.args.get('time_range')
+        
+        service = get_chatbot_service()
+        email_stats = service.get_email_statistics(user_id, time_range, is_admin=is_admin)
+        cv_stats = service.get_cv_statistics(user_id, is_admin=is_admin)
+        
+        return jsonify({
+            "success": True,
+            "is_admin": is_admin,
+            "email_stats": email_stats,
+            "cv_stats": cv_stats
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/chart', methods=['GET'])
+@login_required
+def chatbot_chart():
+    """Get chart data for visualization"""
+    try:
+        user_id = request.current_user['id']
+        is_admin = request.current_user.get('role') == 'admin'
+        chart_type = request.args.get('type', 'overview')
+        
+        service = get_chatbot_service()
+        chart_data = service.get_chart_data(user_id, chart_type, is_admin=is_admin)
+        
+        return jsonify({
+            "success": True,
+            "is_admin": is_admin,
+            "chart": chart_data
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/export', methods=['GET'])
+@login_required
+def chatbot_export():
+    """Export data to Excel file"""
+    try:
+        user_id = request.current_user['id']
+        is_admin = request.current_user.get('role') == 'admin'
+        data_type = request.args.get('type', 'all')  # all, emails, cv
+        
+        service = get_chatbot_service()
+        excel_data = service.generate_excel_data(user_id, data_type, is_admin=is_admin)
+        
+        # Create response with Excel file
+        from flask import send_file
+        output = io.BytesIO(excel_data)
+        output.seek(0)
+        
+        prefix = "admin_" if is_admin else ""
+        filename = f"{prefix}email_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+        
+        return send_file(
+            output,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/quick-stats', methods=['GET'])
+@login_required
+def chatbot_quick_stats():
+    """Get quick statistics summary"""
+    try:
+        user_id = request.current_user['id']
+        is_admin = request.current_user.get('role') == 'admin'
+        
+        service = get_chatbot_service()
+        email_stats = service.get_email_statistics(user_id, is_admin=is_admin)
+        cv_stats = service.get_cv_statistics(user_id, is_admin=is_admin)
+        
+        return jsonify({
+            "success": True,
+            "is_admin": is_admin,
+            "stats": {
+                "email": {
+                    "total_sent": email_stats.get('total_sent', 0),
+                    "responded": email_stats.get('responded', 0),
+                    "pending": email_stats.get('pending', 0),
+                    "response_rate": email_stats.get('response_rate', 0)
+                },
+                "cv": {
+                    "total": cv_stats.get('total', 0),
+                    "qualified": cv_stats.get('qualified', 0),
+                    "not_qualified": cv_stats.get('not_qualified', 0),
+                    "qualification_rate": cv_stats.get('qualification_rate', 0)
+                }
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
 
 
 if __name__ == '__main__':

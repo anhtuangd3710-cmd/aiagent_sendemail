@@ -357,6 +357,7 @@ function navigateTo(page) {
         cv: { title: 'Đánh giá CV', subtitle: 'AI đánh giá CV ứng viên và tự động gửi thư mời' },
         monitor: { title: 'Giám sát phản hồi', subtitle: 'Theo dõi và phân tích phản hồi tự động' },
         youtube: { title: 'Phân tích YouTube', subtitle: 'Ước tính thu nhập kênh YouTube' },
+        chatbot: { title: 'Chatbot Thống Kê', subtitle: 'Hỏi đáp và phân tích dữ liệu với AI' },
         settings: { title: 'Cài đặt', subtitle: 'Cấu hình và hướng dẫn sử dụng' },
         profile: { title: 'Hồ sơ & API Keys', subtitle: 'Quản lý thông tin cá nhân và cấu hình API' }
     };
@@ -376,6 +377,9 @@ function navigateTo(page) {
     if (page === 'profile') {
         loadUserSettings();
         loadDataStats();
+    }
+    if (page === 'chatbot') {
+        initChatbot();
     }
 }
 
@@ -4815,3 +4819,437 @@ function formatVND(num) {
 document.addEventListener('DOMContentLoaded', () => {
     initYouTubeAnalyzer();
 });
+
+// ==================== CHATBOT FUNCTIONS ====================
+
+let chatbotChart = null;
+let chatbotState = {
+    isLoading: false,
+    messages: [],
+    stats: null,
+    isAdmin: false
+};
+
+function initChatbot() {
+    console.log('Initializing chatbot...');
+    
+    // Load initial stats and check admin status
+    loadChatbotStats();
+    loadQuickStats();
+    
+    // Setup event listeners
+    const chatInput = document.getElementById('chatbot-input');
+    const sendBtn = document.getElementById('chatbot-send-btn');
+    
+    if (chatInput) {
+        chatInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendChatMessage();
+            }
+        });
+    }
+    
+    if (sendBtn) {
+        sendBtn.addEventListener('click', sendChatMessage);
+    }
+    
+    // Setup suggestion buttons
+    document.querySelectorAll('.suggestion-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const query = btn.dataset.query;
+            if (query) {
+                document.getElementById('chatbot-input').value = query;
+                sendChatMessage();
+            }
+        });
+    });
+    
+    // Setup chart buttons
+    document.querySelectorAll('.chart-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const chartType = btn.dataset.chart;
+            if (chartType) {
+                loadChart(chartType);
+            }
+        });
+    });
+    
+    // Setup export buttons
+    const exportEmailBtn = document.getElementById('export-email-btn');
+    const exportCvBtn = document.getElementById('export-cv-btn');
+    
+    if (exportEmailBtn) {
+        exportEmailBtn.addEventListener('click', () => exportToExcel('email'));
+    }
+    
+    if (exportCvBtn) {
+        exportCvBtn.addEventListener('click', () => exportToExcel('cv'));
+    }
+}
+
+async function sendChatMessage() {
+    const input = document.getElementById('chatbot-input');
+    const query = input.value.trim();
+    
+    if (!query || chatbotState.isLoading) return;
+    
+    // Add user message
+    addChatMessage(query, 'user');
+    input.value = '';
+    
+    // Show loading
+    chatbotState.isLoading = true;
+    const loadingId = addChatMessage('Đang xử lý...', 'bot', true);
+    
+    try {
+        const response = await fetch('/api/chatbot/query', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ query })
+        });
+        
+        const data = await response.json();
+        
+        // Remove loading message
+        removeChatMessage(loadingId);
+        
+        if (data.success) {
+            // Add bot response
+            addChatMessage(data.response, 'bot');
+            
+            // Show chart if available
+            if (data.chart_data) {
+                renderChart(data.chart_data);
+            }
+            
+            // Refresh stats
+            loadQuickStats();
+        } else {
+            addChatMessage('Xin lỗi, đã có lỗi xảy ra: ' + (data.error || 'Unknown error'), 'bot');
+        }
+    } catch (error) {
+        removeChatMessage(loadingId);
+        addChatMessage('Xin lỗi, không thể kết nối đến server. Vui lòng thử lại.', 'bot');
+        console.error('Chatbot error:', error);
+    } finally {
+        chatbotState.isLoading = false;
+    }
+}
+
+function addChatMessage(content, type, isLoading = false) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return null;
+    
+    const messageId = 'msg-' + Date.now();
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `chat-message ${type}-message`;
+    messageDiv.id = messageId;
+    
+    const avatar = type === 'bot' 
+        ? '<div class="message-avatar"><i class="fas fa-robot"></i></div>'
+        : '<div class="message-avatar"><i class="fas fa-user"></i></div>';
+    
+    const formattedContent = isLoading 
+        ? `<div class="typing-indicator"><span></span><span></span><span></span></div>`
+        : formatChatContent(content);
+    
+    messageDiv.innerHTML = `
+        ${avatar}
+        <div class="message-content">
+            <div class="message-text">${formattedContent}</div>
+            <div class="message-time">${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
+    
+    return messageId;
+}
+
+function removeChatMessage(messageId) {
+    const message = document.getElementById(messageId);
+    if (message) {
+        message.remove();
+    }
+}
+
+function formatChatContent(content) {
+    // Convert markdown-like formatting to HTML
+    let formatted = content
+        // Bold
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+        // Italic
+        .replace(/\*(.*?)\*/g, '<em>$1</em>')
+        // Line breaks
+        .replace(/\n/g, '<br>')
+        // Lists
+        .replace(/^- (.+)$/gm, '<li>$1</li>')
+        // Numbers
+        .replace(/(\d+(?:,\d{3})*(?:\.\d+)?)/g, '<span class="highlight-number">$1</span>');
+    
+    // Wrap lists in ul
+    if (formatted.includes('<li>')) {
+        formatted = formatted.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+    }
+    
+    return formatted;
+}
+
+async function loadChatbotStats() {
+    try {
+        const response = await fetch('/api/chatbot/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+            chatbotState.stats = data.stats;
+            updateSidebarStats(data.stats);
+        }
+    } catch (error) {
+        console.error('Error loading chatbot stats:', error);
+    }
+}
+
+async function loadQuickStats() {
+    try {
+        const response = await fetch('/api/chatbot/quick-stats');
+        const data = await response.json();
+        
+        if (data.success) {
+            chatbotState.isAdmin = data.is_admin;
+            updateQuickStats(data.stats);
+            updateAdminBadge(data.is_admin);
+        }
+    } catch (error) {
+        console.error('Error loading quick stats:', error);
+    }
+}
+
+function updateAdminBadge(isAdmin) {
+    const badge = document.getElementById('chatbot-admin-badge');
+    const adminNote = document.getElementById('chatbot-admin-note');
+    
+    if (badge) {
+        badge.style.display = isAdmin ? 'inline-flex' : 'none';
+    }
+    
+    if (adminNote) {
+        adminNote.style.display = isAdmin ? 'block' : 'none';
+    }
+    
+    // Update sidebar title
+    const sidebarTitle = document.querySelector('.chatbot-sidebar .sidebar-section:first-child h4');
+    if (sidebarTitle && isAdmin) {
+        sidebarTitle.innerHTML = '<i class="fas fa-chart-bar"></i> Thống kê <span class="admin-tag">Toàn hệ thống</span>';
+    }
+}
+
+function updateSidebarStats(stats) {
+    const emailStats = stats.email || {};
+    const cvStats = stats.cv || {};
+    
+    // Update email stats
+    updateStatElement('stat-total-sent', emailStats.total_sent);
+    updateStatElement('stat-responded', emailStats.responded);
+    updateStatElement('stat-pending', emailStats.pending);
+    updateStatElement('stat-failed', emailStats.failed || 0);
+    
+    // Update CV stats
+    updateStatElement('stat-total-cv', cvStats.total);
+    updateStatElement('stat-qualified', cvStats.qualified);
+    updateStatElement('stat-not-qualified', cvStats.not_qualified);
+    
+    // Update sentiment bars
+    const sentiments = emailStats.sentiments || {};
+    updateSentimentBar('sentiment-positive', sentiments.positive, emailStats.total_sent);
+    updateSentimentBar('sentiment-neutral', sentiments.neutral, emailStats.total_sent);
+    updateSentimentBar('sentiment-negative', sentiments.negative, emailStats.total_sent);
+}
+
+function updateStatElement(id, value) {
+    const el = document.getElementById(id);
+    if (el) {
+        el.textContent = typeof value === 'number' ? value.toLocaleString('vi-VN') : (value || '0');
+    }
+}
+
+function updateSentimentBar(id, count, total) {
+    const bar = document.getElementById(id);
+    if (bar) {
+        const percentage = total > 0 ? Math.round((count || 0) / total * 100) : 0;
+        bar.style.width = percentage + '%';
+        bar.setAttribute('title', `${count || 0} (${percentage}%)`);
+    }
+}
+
+function updateQuickStats(stats) {
+    // Update any quick stat displays
+    if (stats.email) {
+        updateStatElement('stat-total-sent', stats.email.total_sent);
+        updateStatElement('stat-responded', stats.email.responded);
+        updateStatElement('stat-pending', stats.email.pending);
+    }
+    if (stats.cv) {
+        updateStatElement('stat-total-cv', stats.cv.total);
+        updateStatElement('stat-qualified', stats.cv.qualified);
+    }
+}
+
+async function loadChart(chartType) {
+    try {
+        const response = await fetch(`/api/chatbot/chart?type=${chartType}`);
+        const data = await response.json();
+        
+        if (data.success && data.chart_data) {
+            renderChart(data.chart_data);
+            
+            // Update active button
+            document.querySelectorAll('.chart-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.chart === chartType);
+            });
+        }
+    } catch (error) {
+        console.error('Error loading chart:', error);
+    }
+}
+
+function renderChart(chartData) {
+    const container = document.getElementById('chatbot-chart-container');
+    const canvas = document.getElementById('chatbot-chart');
+    
+    if (!container || !canvas) return;
+    
+    container.style.display = 'block';
+    
+    // Destroy existing chart
+    if (chatbotChart) {
+        chatbotChart.destroy();
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Chart options based on type
+    const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    padding: 20,
+                    font: {
+                        size: 12
+                    }
+                }
+            },
+            title: {
+                display: true,
+                text: chartData.title || 'Biểu đồ',
+                font: {
+                    size: 16,
+                    weight: 'bold'
+                },
+                padding: {
+                    bottom: 20
+                }
+            }
+        }
+    };
+    
+    // Add scale options for bar/line charts
+    if (chartData.type === 'bar' || chartData.type === 'line') {
+        options.scales = {
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    stepSize: 1
+                }
+            }
+        };
+    }
+    
+    chatbotChart = new Chart(ctx, {
+        type: chartData.type || 'bar',
+        data: chartData.data,
+        options: options
+    });
+}
+
+function hideChart() {
+    const container = document.getElementById('chatbot-chart-container');
+    if (container) {
+        container.style.display = 'none';
+    }
+    if (chatbotChart) {
+        chatbotChart.destroy();
+        chatbotChart = null;
+    }
+}
+
+async function exportToExcel(type) {
+    try {
+        const btn = document.getElementById(`export-${type}-btn`);
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xuất...';
+        }
+        
+        const response = await fetch(`/api/chatbot/export?type=${type}`);
+        
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${type}_report_${new Date().toISOString().split('T')[0]}.xlsx`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            a.remove();
+            
+            addChatMessage(`✅ Đã xuất file Excel ${type === 'email' ? 'Email' : 'CV'} thành công!`, 'bot');
+        } else {
+            const data = await response.json();
+            addChatMessage(`❌ Lỗi xuất Excel: ${data.error || 'Unknown error'}`, 'bot');
+        }
+    } catch (error) {
+        console.error('Export error:', error);
+        addChatMessage('❌ Không thể xuất file Excel. Vui lòng thử lại.', 'bot');
+    } finally {
+        const btn = document.getElementById(`export-${type}-btn`);
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = type === 'email' 
+                ? '<i class="fas fa-file-excel"></i> Xuất Excel Email'
+                : '<i class="fas fa-file-excel"></i> Xuất Excel CV';
+        }
+    }
+}
+
+function clearChatHistory() {
+    const container = document.getElementById('chatbot-messages');
+    if (container) {
+        container.innerHTML = `
+            <div class="chat-message bot-message">
+                <div class="message-avatar">
+                    <i class="fas fa-robot"></i>
+                </div>
+                <div class="message-content">
+                    <div class="message-text">
+                        Xin chào! 👋 Tôi là trợ lý AI của bạn. Tôi có thể giúp bạn:<br><br>
+                        📊 Xem thống kê email và CV<br>
+                        📈 Tạo biểu đồ phân tích<br>
+                        📥 Xuất dữ liệu ra Excel<br>
+                        ❓ Trả lời các câu hỏi về dữ liệu<br><br>
+                        Hãy hỏi tôi bất cứ điều gì!
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+    hideChart();
+    chatbotState.messages = [];
+}
