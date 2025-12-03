@@ -2458,13 +2458,52 @@ def chatbot_query():
         user_settings = database.get_user_settings(user_id)
         
         service = get_chatbot_service()
+        
+        # Check usage limit
+        usage_info = service.check_usage_limit(user_id, user_settings)
+        if not usage_info['allowed']:
+            return jsonify({
+                "success": False,
+                "usage_limit_reached": True,
+                "limit": service.FREE_DAILY_LIMIT,
+                "message": f"Bạn đã hết lượt sử dụng miễn phí hôm nay ({service.FREE_DAILY_LIMIT} lượt/ngày). Vui lòng thêm API key Gemini để sử dụng không giới hạn."
+            })
+        
         result = service.process_query(user_id, query, user_settings, is_admin=is_admin, session_id=session_id)
+        
+        # Add usage info to result
+        result['usage_info'] = usage_info
         
         return jsonify(result)
         
     except Exception as e:
         return jsonify({
             "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/check-email-config', methods=['GET'])
+@login_required
+def check_email_config():
+    """Check if user has configured email settings"""
+    try:
+        user_id = request.current_user['id']
+        service = get_chatbot_service()
+        config_status = service.check_email_config(user_id)
+        
+        return jsonify({
+            "success": True,
+            "configured": config_status['configured'],
+            "has_email": config_status.get('has_email', False),
+            "has_password": config_status.get('has_password', False),
+            "message": config_status.get('message')
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "configured": False,
             "error": str(e)
         }), 500
 

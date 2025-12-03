@@ -5233,7 +5233,8 @@ async function sendChatMessage() {
             
             // Show email form if AI wants to show email composer
             if (data.show_email_form) {
-                addEmailFormMessage(data.email_data);
+                // Check email config first, then show form
+                checkEmailConfigAndShowForm(data.email_data);
             }
             
             // Show export options if user wants to export
@@ -5241,10 +5242,22 @@ async function sendChatMessage() {
                 showExportOptions();
             }
             
+            // Show usage limit warning if applicable
+            if (data.usage_info && !data.usage_info.has_api_key && data.usage_info.remaining >= 0) {
+                if (data.usage_info.remaining <= 3 && data.usage_info.remaining > 0) {
+                    addChatMessage(`⚠️ Bạn còn ${data.usage_info.remaining} lượt sử dụng miễn phí hôm nay. Để sử dụng không giới hạn, hãy thêm API key Gemini trong "Hồ sơ & API Keys".`, 'bot');
+                }
+            }
+            
             // Refresh stats
             loadQuickStats();
         } else {
-            addChatMessage('Xin lỗi, đã có lỗi xảy ra: ' + (data.error || data.message || 'Unknown error'), 'bot');
+            // Check if it's a usage limit error
+            if (data.usage_limit_reached) {
+                addChatMessage(`🚫 Bạn đã hết lượt sử dụng miễn phí hôm nay (${data.limit} lượt/ngày).\n\n💡 Để sử dụng không giới hạn, vui lòng thêm API key Gemini của bạn trong phần "Hồ sơ & API Keys".`, 'bot');
+            } else {
+                addChatMessage('Xin lỗi, đã có lỗi xảy ra: ' + (data.error || data.message || 'Unknown error'), 'bot');
+            }
         }
     } catch (error) {
         removeChatMessage(loadingId);
@@ -5585,7 +5598,7 @@ function renderInlineChart(canvasId, chartData) {
 // Email form message counter
 let emailFormCounter = 0;
 
-function addEmailFormMessage(emailData = null) {
+function addEmailFormMessage(emailData = null, emailConfigured = true) {
     const container = document.getElementById('chatbot-messages');
     if (!container) return null;
     
@@ -5604,6 +5617,35 @@ function addEmailFormMessage(emailData = null) {
     const tone = emailData?.tone || 'formal';
     const language = emailData?.language || 'vi';
     
+    // If email not configured, show warning
+    if (!emailConfigured) {
+        messageDiv.innerHTML = `
+            <div class="message-avatar">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="message-content email-config-warning">
+                <div class="warning-header">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Chưa cấu hình Email</span>
+                </div>
+                <div class="warning-body">
+                    <p>Bạn cần cấu hình Email và App Password trước khi gửi email.</p>
+                    <p>Vui lòng vào <strong>"Hồ sơ & API Keys"</strong> để thiết lập:</p>
+                    <ul>
+                        <li>📧 Email gửi (Gmail, Outlook...)</li>
+                        <li>🔐 App Password</li>
+                    </ul>
+                    <button class="btn btn-primary" onclick="navigateTo('settings')">
+                        <i class="fas fa-cog"></i> Đi đến Cài đặt
+                    </button>
+                </div>
+            </div>
+        `;
+        container.appendChild(messageDiv);
+        container.scrollTop = container.scrollHeight;
+        return messageId;
+    }
+    
     messageDiv.innerHTML = `
         <div class="message-avatar">
             <i class="fas fa-robot"></i>
@@ -5613,49 +5655,87 @@ function addEmailFormMessage(emailData = null) {
                 <i class="fas fa-envelope"></i>
                 <span>Soạn Email với AI</span>
             </div>
+            
+            <!-- Email Options Tabs -->
+            <div class="email-options-tabs">
+                <button type="button" class="email-tab active" onclick="switchEmailTab('${formId}', 'form')">
+                    <i class="fas fa-wpforms"></i> Dùng Form
+                </button>
+                <button type="button" class="email-tab" onclick="switchEmailTab('${formId}', 'manual')">
+                    <i class="fas fa-keyboard"></i> Nhập tay
+                </button>
+            </div>
+            
+            <!-- Form Mode -->
             <form id="${formId}" class="chat-email-form" onsubmit="sendEmailFromChat(event, '${formId}')">
-                <div class="email-form-row">
-                    <div class="form-group">
-                        <label><i class="fas fa-at"></i> Email người nhận</label>
-                        <input type="email" name="to_email" value="${escapeHtml(toEmail)}" placeholder="example@email.com" required>
+                <div class="email-mode email-mode-form active" data-mode="form">
+                    <div class="email-form-row">
+                        <div class="form-group">
+                            <label><i class="fas fa-at"></i> Email người nhận</label>
+                            <input type="email" name="to_email" value="${escapeHtml(toEmail)}" placeholder="example@email.com" required>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-user"></i> Tên người nhận</label>
+                            <input type="text" name="to_name" value="${escapeHtml(toName)}" placeholder="Tên người nhận">
+                        </div>
                     </div>
+                    
                     <div class="form-group">
-                        <label><i class="fas fa-user"></i> Tên người nhận</label>
-                        <input type="text" name="to_name" value="${escapeHtml(toName)}" placeholder="Tên người nhận">
+                        <label><i class="fas fa-comment-alt"></i> Mục đích / Nội dung chính</label>
+                        <textarea name="purpose" rows="2" placeholder="Mô tả ngắn về mục đích email..." required>${escapeHtml(purpose)}</textarea>
+                    </div>
+                    
+                    <div class="email-form-row">
+                        <div class="form-group">
+                            <label><i class="fas fa-palette"></i> Phong cách</label>
+                            <select name="tone">
+                                <option value="formal" ${tone === 'formal' ? 'selected' : ''}>📝 Trang trọng</option>
+                                <option value="friendly" ${tone === 'friendly' ? 'selected' : ''}>😊 Thân thiện</option>
+                                <option value="casual" ${tone === 'casual' ? 'selected' : ''}>💬 Giản dị</option>
+                                <option value="professional" ${tone === 'professional' ? 'selected' : ''}>👔 Chuyên nghiệp</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-language"></i> Ngôn ngữ</label>
+                            <select name="language">
+                                <option value="vi" ${language === 'vi' ? 'selected' : ''}>🇻🇳 Tiếng Việt</option>
+                                <option value="en" ${language === 'en' ? 'selected' : ''}>🇺🇸 English</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="email-form-actions">
+                        <button type="button" class="btn btn-secondary" onclick="generateEmailPreview('${formId}')">
+                            <i class="fas fa-magic"></i> Tạo nội dung AI
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-paper-plane"></i> Gửi email
+                        </button>
                     </div>
                 </div>
                 
-                <div class="form-group">
-                    <label><i class="fas fa-comment-alt"></i> Mục đích / Nội dung chính</label>
-                    <textarea name="purpose" rows="2" placeholder="Mô tả ngắn về mục đích email..." required>${escapeHtml(purpose)}</textarea>
-                </div>
-                
-                <div class="email-form-row">
+                <!-- Manual Mode -->
+                <div class="email-mode email-mode-manual" data-mode="manual">
                     <div class="form-group">
-                        <label><i class="fas fa-palette"></i> Phong cách</label>
-                        <select name="tone">
-                            <option value="formal" ${tone === 'formal' ? 'selected' : ''}>📝 Trang trọng</option>
-                            <option value="friendly" ${tone === 'friendly' ? 'selected' : ''}>😊 Thân thiện</option>
-                            <option value="casual" ${tone === 'casual' ? 'selected' : ''}>💬 Giản dị</option>
-                            <option value="professional" ${tone === 'professional' ? 'selected' : ''}>👔 Chuyên nghiệp</option>
-                        </select>
+                        <label><i class="fas fa-at"></i> Email người nhận *</label>
+                        <input type="email" name="manual_to_email" placeholder="example@email.com">
                     </div>
+                    
                     <div class="form-group">
-                        <label><i class="fas fa-language"></i> Ngôn ngữ</label>
-                        <select name="language">
-                            <option value="vi" ${language === 'vi' ? 'selected' : ''}>🇻🇳 Tiếng Việt</option>
-                            <option value="en" ${language === 'en' ? 'selected' : ''}>🇺🇸 English</option>
-                        </select>
+                        <label><i class="fas fa-heading"></i> Tiêu đề email *</label>
+                        <input type="text" name="manual_subject" placeholder="Tiêu đề email...">
                     </div>
-                </div>
-                
-                <div class="email-form-actions">
-                    <button type="button" class="btn btn-secondary" onclick="generateEmailPreview('${formId}')">
-                        <i class="fas fa-magic"></i> Tạo nội dung AI
-                    </button>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-paper-plane"></i> Gửi email
-                    </button>
+                    
+                    <div class="form-group">
+                        <label><i class="fas fa-align-left"></i> Nội dung email *</label>
+                        <textarea name="manual_body" rows="6" placeholder="Nhập nội dung email của bạn..."></textarea>
+                    </div>
+                    
+                    <div class="email-form-actions">
+                        <button type="button" class="btn btn-primary" onclick="sendManualEmail('${formId}')">
+                            <i class="fas fa-paper-plane"></i> Gửi email
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="email-preview-section" id="preview-${formId}" style="display: none;">
@@ -5891,11 +5971,124 @@ async function sendEmailFromChat(event, formId) {
     }
 }
 
+// Switch between form and manual email modes
+function switchEmailTab(formId, mode) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    // Update tabs
+    const tabs = form.closest('.email-form-container').querySelectorAll('.email-tab');
+    tabs.forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.textContent.includes(mode === 'form' ? 'Form' : 'Nhập tay')) {
+            tab.classList.add('active');
+        }
+    });
+    
+    // Update modes
+    const modes = form.querySelectorAll('.email-mode');
+    modes.forEach(m => {
+        m.classList.remove('active');
+        if (m.dataset.mode === mode) {
+            m.classList.add('active');
+        }
+    });
+}
+
+// Send email manually (without AI generation)
+async function sendManualEmail(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const toEmail = form.querySelector('input[name="manual_to_email"]').value;
+    const subject = form.querySelector('input[name="manual_subject"]').value;
+    const body = form.querySelector('textarea[name="manual_body"]').value;
+    
+    if (!toEmail || !subject || !body) {
+        showNotification('error', 'Vui lòng điền đầy đủ thông tin email');
+        return;
+    }
+    
+    // Confirm before sending
+    if (!confirm(`Bạn có chắc muốn gửi email đến ${toEmail}?`)) {
+        return;
+    }
+    
+    // Show loading
+    const submitBtn = form.querySelector('.email-mode-manual .btn-primary');
+    const originalHTML = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+    submitBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to_email: toEmail,
+                to_name: '',
+                subject: subject,
+                body: body,
+                purpose: 'Manual email',
+                tone: 'formal',
+                language: 'vi'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Replace form with success message
+            form.innerHTML = `
+                <div class="email-sent-success">
+                    <i class="fas fa-check-circle"></i>
+                    <h4>Email đã gửi thành công!</h4>
+                    <p>Đến: ${escapeHtml(toEmail)}</p>
+                    <p>Chủ đề: ${escapeHtml(subject)}</p>
+                </div>
+            `;
+            
+            showNotification('success', 'Email đã được gửi thành công!');
+            addChatMessage(`✅ Đã gửi email thành công đến **${toEmail}**!`, 'bot');
+            loadQuickStats();
+        } else {
+            showNotification('error', data.message || 'Không thể gửi email');
+            submitBtn.innerHTML = originalHTML;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        console.error('Error sending manual email:', error);
+        showNotification('error', 'Lỗi kết nối, vui lòng thử lại');
+        submitBtn.innerHTML = originalHTML;
+        submitBtn.disabled = false;
+    }
+}
+
+// Check email configuration before showing email form
+async function checkEmailConfigAndShowForm(emailData = null) {
+    try {
+        const response = await fetch('/api/chatbot/check-email-config');
+        const data = await response.json();
+        
+        if (data.success) {
+            addEmailFormMessage(emailData, data.configured);
+        } else {
+            addEmailFormMessage(emailData, false);
+        }
+    } catch (error) {
+        console.error('Error checking email config:', error);
+        addEmailFormMessage(emailData, false);
+    }
+}
+
 // Expose email functions to global scope for inline onclick
 window.generateEmailPreview = generateEmailPreview;
 window.editEmailPreview = editEmailPreview;
 window.saveEmailEdit = saveEmailEdit;
 window.sendEmailFromChat = sendEmailFromChat;
+window.switchEmailTab = switchEmailTab;
+window.sendManualEmail = sendManualEmail;
+window.checkEmailConfigAndShowForm = checkEmailConfigAndShowForm;
 
 function formatChatContent(content) {
     // Convert markdown-like formatting to HTML

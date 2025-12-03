@@ -17,9 +17,66 @@ logger = logging.getLogger(__name__)
 class ChatbotService:
     """Service for AI-powered chatbot with email analytics"""
     
+    # Free tier limits
+    FREE_DAILY_LIMIT = 10  # Free queries per day without API key
+    
     def __init__(self, database, ai_agent):
         self.database = database
         self.ai_agent = ai_agent
+    
+    def _get_user_daily_usage(self, user_id: int) -> int:
+        """Get user's chatbot usage count for today"""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            result = self.database.query_raw(
+                """SELECT COUNT(*) as count FROM chat_messages 
+                   WHERE user_id = %s AND role = 'user' 
+                   AND DATE(created_at) = %s""",
+                (user_id, today)
+            )
+            return result[0]['count'] if result else 0
+        except Exception as e:
+            logger.error(f"Error getting user daily usage: {e}")
+            return 0
+    
+    def check_usage_limit(self, user_id: int, user_settings: Dict = None) -> Dict:
+        """Check if user can use chatbot (API key or free tier)"""
+        # If user has API key, unlimited usage
+        if user_settings and user_settings.get('gemini_api_key'):
+            return {'allowed': True, 'has_api_key': True, 'remaining': -1}
+        
+        # Check system API key
+        from config.settings import GEMINI_API_KEY
+        if GEMINI_API_KEY:
+            # System has API key, check free tier limit
+            daily_usage = self._get_user_daily_usage(user_id)
+            remaining = max(0, self.FREE_DAILY_LIMIT - daily_usage)
+            return {
+                'allowed': remaining > 0,
+                'has_api_key': False,
+                'remaining': remaining,
+                'limit': self.FREE_DAILY_LIMIT
+            }
+        
+        return {'allowed': False, 'has_api_key': False, 'remaining': 0}
+    
+    def check_email_config(self, user_id: int) -> Dict:
+        """Check if user has configured email settings"""
+        try:
+            user_settings = self.database.get_user_settings(user_id)
+            has_email = bool(user_settings and user_settings.get('sender_email'))
+            has_password = bool(user_settings and user_settings.get('sender_password'))
+            
+            return {
+                'configured': has_email and has_password,
+                'has_email': has_email,
+                'has_password': has_password,
+                'message': None if (has_email and has_password) else 
+                          '⚠️ Bạn chưa cấu hình email. Vui lòng vào "Hồ sơ & API Keys" để thiết lập Email và App Password trước khi gửi email.'
+            }
+        except Exception as e:
+            logger.error(f"Error checking email config: {e}")
+            return {'configured': False, 'message': 'Không thể kiểm tra cấu hình email'}
     
     def _get_all_emails_admin(self) -> List[Dict]:
         """Get all emails from all users (admin only) with responses"""
