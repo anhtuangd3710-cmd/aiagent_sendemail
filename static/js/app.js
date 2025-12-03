@@ -337,9 +337,29 @@ function closeMobileSidebar() {
         }
         document.body.style.overflow = '';
     }
+    
+    // Also close chatbot sessions sidebar on mobile
+    closeChatbotSessionsSidebar();
+}
+
+// Close chatbot sessions sidebar (for mobile)
+function closeChatbotSessionsSidebar() {
+    const chatSessionsSidebar = document.querySelector('.chat-sessions-sidebar');
+    const sessionsOverlay = document.getElementById('sessions-overlay');
+    
+    if (chatSessionsSidebar) {
+        chatSessionsSidebar.classList.remove('mobile-open');
+    }
+    if (sessionsOverlay) {
+        sessionsOverlay.classList.remove('active');
+    }
 }
 
 function navigateTo(page) {
+    // Close any open sidebars first
+    closeChatbotSessionsSidebar();
+    document.body.style.overflow = '';
+    
     // Update nav
     navItems.forEach(item => {
         item.classList.toggle('active', item.dataset.page === page);
@@ -4923,10 +4943,17 @@ function setupMobileSessionsToggle() {
     const overlay = document.getElementById('sessions-overlay');
     
     if (toggleBtn && sidebar) {
-        toggleBtn.addEventListener('click', () => {
+        toggleBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             sidebar.classList.toggle('mobile-open');
             if (overlay) {
                 overlay.classList.toggle('active');
+            }
+            // Prevent body scroll when sidebar is open
+            if (sidebar.classList.contains('mobile-open')) {
+                document.body.style.overflow = 'hidden';
+            } else {
+                document.body.style.overflow = '';
             }
         });
     }
@@ -4934,24 +4961,10 @@ function setupMobileSessionsToggle() {
     // Close sidebar when clicking overlay
     if (overlay) {
         overlay.addEventListener('click', () => {
-            if (sidebar) {
-                sidebar.classList.remove('mobile-open');
-            }
-            overlay.classList.remove('active');
+            closeChatbotSessionsSidebar();
+            document.body.style.overflow = '';
         });
     }
-    
-    // Close sidebar when selecting a session on mobile
-    window.closeMobileSidebar = function() {
-        if (window.innerWidth < 1024) {
-            if (sidebar) {
-                sidebar.classList.remove('mobile-open');
-            }
-            if (overlay) {
-                overlay.classList.remove('active');
-            }
-        }
-    };
 }
 
 // Chat Session Management
@@ -5035,10 +5048,9 @@ async function selectSession(sessionId) {
     // Load messages
     await loadSessionMessages(sessionId);
     
-    // Close mobile sidebar after selecting
-    if (typeof closeMobileSidebar === 'function') {
-        closeMobileSidebar();
-    }
+    // Close chatbot sessions sidebar on mobile after selecting
+    closeChatbotSessionsSidebar();
+    document.body.style.overflow = '';
 }
 
 async function loadSessionMessages(sessionId) {
