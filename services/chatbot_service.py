@@ -440,6 +440,39 @@ class ChatbotService:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in guide_keywords)
 
+    def _get_conversation_history(self, session_id: int, max_messages: int = 20) -> str:
+        """Get conversation history for context"""
+        try:
+            messages = self.database.get_session_messages(session_id)
+            if not messages:
+                return ""
+            
+            # Limit to last N messages to avoid token overflow
+            recent_messages = messages[-max_messages:] if len(messages) > max_messages else messages
+            
+            # Exclude the current message (last user message just saved)
+            if recent_messages and recent_messages[-1].get('role') == 'user':
+                recent_messages = recent_messages[:-1]
+            
+            if not recent_messages:
+                return ""
+            
+            history_text = "=== LỊCH SỬ HỘI THOẠI TRƯỚC ĐÓ ===\n"
+            for msg in recent_messages:
+                role = "Người dùng" if msg.get('role') == 'user' else "Trợ lý AI"
+                content = msg.get('content', '')
+                # Truncate very long messages
+                if len(content) > 500:
+                    content = content[:500] + "..."
+                history_text += f"\n{role}: {content}\n"
+            
+            history_text += "\n=== KẾT THÚC LỊCH SỬ ===\n"
+            return history_text
+            
+        except Exception as e:
+            logger.error(f"Error getting conversation history: {e}")
+            return ""
+
     def process_query(self, user_id: int, query: str, user_settings: Dict = None, 
                        is_admin: bool = False, session_id: int = None) -> Dict:
         """Process user query and return appropriate response with data"""
@@ -450,6 +483,9 @@ class ChatbotService:
             
             # Save user message
             self.database.save_chat_message(session_id, user_id, 'user', query)
+            
+            # Load conversation history for context
+            conversation_history = self._get_conversation_history(session_id)
             
             # Check if this is a guide/help query
             is_guide_query = self._is_guide_query(query)
@@ -521,11 +557,15 @@ Top 5 người nhận email:
 Phân bố điểm CV:
 {json.dumps(cv_stats.get('score_distribution', {}), ensure_ascii=False, indent=2)}
 
-=== CÂU HỎI CỦA NGƯỜI DÙNG ===
+{conversation_history}
+
+=== CÂU HỎI HIỆN TẠI CỦA NGƯỜI DÙNG ===
 {query}
 
 === HƯỚNG DẪN TRẢ LỜI ===
 - Trả lời tự nhiên, thân thiện bằng tiếng Việt
+- NHỚ CONTEXT của cuộc hội thoại trước đó để trả lời liên quan
+- Nếu người dùng hỏi tiếp theo hoặc đề cập đến nội dung trước, hãy dựa vào lịch sử để trả lời
 - Nếu hỏi về hướng dẫn/thiết lập: Cung cấp hướng dẫn chi tiết từng bước
 - Nếu hỏi về thống kê: Cung cấp số liệu và phân tích
 - Nếu hỏi về biểu đồ/xuất file: Đề cập bạn có thể hỗ trợ

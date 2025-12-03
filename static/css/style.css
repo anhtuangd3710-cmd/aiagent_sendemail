@@ -7274,10 +7274,11 @@ select:focus-visible {
         left: -300px;
         width: 280px;
         height: 100vh;
-        z-index: 1000;
+        z-index: 1001;
         border-radius: 0;
         transition: left 0.3s ease;
         box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
+        padding-top: 0;
     }
     
     .chat-sessions-sidebar.mobile-open {
@@ -7292,7 +7293,7 @@ select:focus-visible {
         right: 0;
         bottom: 0;
         background: rgba(0, 0, 0, 0.5);
-        z-index: 999;
+        z-index: 1000;
         display: none;
     }
     
@@ -7615,8 +7616,13 @@ select:focus-visible {
     
     /* Sessions sidebar on mobile */
     .chat-sessions-sidebar {
-        width: 260px;
-        left: -280px;
+        width: 280px;
+        left: -300px;
+        padding-top: env(safe-area-inset-top, 0);
+    }
+    
+    .chat-sessions-sidebar .sessions-header {
+        padding-top: max(16px, env(safe-area-inset-top, 16px));
     }
     
     .session-item {
@@ -7755,7 +7761,12 @@ select:focus-visible {
     
     /* Sessions sidebar smaller */
     .chat-sessions-sidebar {
-        width: 240px;
+        width: 260px;
+        left: -280px;
+    }
+    
+    .chat-sessions-sidebar .sessions-header {
+        padding-top: max(14px, env(safe-area-inset-top, 14px));
     }
 }
 

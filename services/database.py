@@ -714,6 +714,19 @@ class DatabaseService:
                 messages.append(msg)
             return messages
     
+    def get_session_messages(self, session_id: int, limit: int = 50) -> List[Dict]:
+        """Get all messages in a session (simplified version for context)"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT role, content, created_at FROM chat_messages 
+                WHERE session_id = ?
+                ORDER BY created_at ASC
+                LIMIT ?
+            """, (session_id, limit))
+            return [dict(row) for row in cursor.fetchall()]
+    
     def get_or_create_active_session(self, user_id: int) -> int:
         """Get the most recent active session or create a new one"""
         with sqlite3.connect(self.db_path) as conn:
