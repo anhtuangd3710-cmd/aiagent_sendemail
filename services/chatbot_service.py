@@ -738,9 +738,10 @@ Ví dụ:
         }
         
         try:
-            # Find intent line - updated pattern for new format with email
+            # First try to find intent line with email_data
+            # Pattern: [INTENT: chart_type=xxx, show_chart=xxx, show_export=xxx, show_email_form=xxx, email_data=xxx]
             intent_match = re.search(
-                r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^,]+),\s*show_email_form=([^,]+),\s*email_data=([^\]]+)\]', 
+                r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^,]+),\s*show_email_form=([^,\]]+)(?:,\s*email_data=(.+?))?\]', 
                 response
             )
             
@@ -749,12 +750,14 @@ Ví dụ:
                 show_chart = intent_match.group(2).strip().lower() == 'true'
                 show_export = intent_match.group(3).strip().lower() == 'true'
                 show_email_form = intent_match.group(4).strip().lower() == 'true'
-                email_data_str = intent_match.group(5).strip()
+                email_data_str = intent_match.group(5).strip() if intent_match.group(5) else 'none'
                 
                 # Parse email_data JSON
                 email_data = None
                 if email_data_str and email_data_str.lower() != 'none':
                     try:
+                        # Clean up the JSON string
+                        email_data_str = email_data_str.rstrip(']').strip()
                         email_data = json.loads(email_data_str)
                     except:
                         email_data = None
@@ -767,8 +770,8 @@ Ví dụ:
                     'email_data': email_data
                 }
             else:
-                # Try old format for backward compatibility
-                old_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\]]+)\]', response)
+                # Try old format for backward compatibility (3 params only)
+                old_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\],]+)\]?', response)
                 if old_match:
                     chart_type = old_match.group(1).strip().lower()
                     show_chart = old_match.group(2).strip().lower() == 'true'
