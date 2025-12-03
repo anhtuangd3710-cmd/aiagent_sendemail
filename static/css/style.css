@@ -8803,6 +8803,90 @@ select:focus-visible {
     font-size: 12px;
 }
 
+/* Email Status Card (triggered by AI) */
+.email-status-card {
+    background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px;
+    max-width: 450px;
+}
+
+.email-status-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.email-status-header .email-status-badge {
+    margin-left: auto;
+}
+
+.email-status-info {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.email-info-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #374151;
+}
+
+.email-info-row i {
+    width: 16px;
+    color: #6b7280;
+}
+
+.email-response-preview {
+    background: #ecfdf5;
+    border: 1px solid #a7f3d0;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+
+.email-response-preview .response-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #059669;
+    margin-bottom: 8px;
+}
+
+.email-response-preview .response-subject {
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.email-response-preview .response-body {
+    font-size: 12px;
+    color: #374151;
+    line-height: 1.5;
+    background: white;
+    padding: 8px;
+    border-radius: 6px;
+}
+
+.email-status-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.email-status-actions .btn-sm {
+    padding: 6px 12px;
+    font-size: 12px;
+}
+
 /* Email Sent Success */
 .email-sent-success {
     text-align: center;

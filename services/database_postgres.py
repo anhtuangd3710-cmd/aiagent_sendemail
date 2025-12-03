@@ -395,6 +395,21 @@ class DatabaseServicePostgres:
             one=True
         )
     
+    def get_recent_emails(self, user_id: int, limit: int = 5) -> List[Dict]:
+        """Get most recent emails for a user with response info"""
+        query = """
+            SELECT DISTINCT ON (se.id) se.*, 
+                   r.response_body, r.response_subject as response_subject,
+                   r.analysis, r.received_at as response_received_at
+            FROM sent_emails se
+            LEFT JOIN responses r ON se.id = r.sent_email_id
+            WHERE se.user_id = %s
+            ORDER BY se.id, r.received_at DESC NULLS LAST
+        """
+        emails = self.query_raw(query, (user_id,)) or []
+        # Sort by sent_at descending and limit
+        return sorted(emails, key=lambda x: x.get('sent_at', ''), reverse=True)[:limit]
+    
     def get_response_by_email_id(self, email_id: int) -> Optional[Dict]:
         """Get response for a specific email"""
         return self.query_raw(

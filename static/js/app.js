@@ -5493,6 +5493,12 @@ async function sendChatMessage() {
                 checkEmailConfigAndShowForm(data.email_data);
             }
             
+            // Show email status if AI wants to show email details
+            if (data.show_email_status && data.email_id) {
+                // Fetch and display email status
+                showEmailStatusFromAI(data.email_id);
+            }
+            
             // Show export options if user wants to export
             if (data.show_export) {
                 showExportOptions();
@@ -6618,6 +6624,96 @@ async function checkEmailConfigAndShowForm(emailData = null) {
         console.error('Error checking email config:', error);
         addEmailFormMessage(emailData, false);
     }
+}
+
+// Show email status triggered by AI
+async function showEmailStatusFromAI(emailId) {
+    try {
+        const response = await fetch(`/api/emails/${emailId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const email = data.email;
+            const responseData = data.response;
+            
+            // Add detailed email status card
+            addEmailStatusCard(email, responseData);
+        }
+    } catch (error) {
+        console.error('Error showing email status from AI:', error);
+    }
+}
+
+// Add email status card to chat
+function addEmailStatusCard(email, responseData = null) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message bot email-status-card-message';
+    
+    const sentAt = email.sent_at ? formatDateTime(email.sent_at) : 'N/A';
+    const hasResponse = email.response_received;
+    const statusIcon = hasResponse ? 'fa-check-circle' : 'fa-clock';
+    const statusColor = hasResponse ? '#10b981' : '#f59e0b';
+    const statusText = hasResponse ? 'Đã có phản hồi' : 'Chờ phản hồi';
+    
+    let responseHtml = '';
+    if (responseData) {
+        const responseAt = responseData.received_at ? formatDateTime(responseData.received_at) : '';
+        responseHtml = `
+            <div class="email-response-preview">
+                <div class="response-header">
+                    <i class="fas fa-reply" style="color: #10b981;"></i>
+                    <span>Phản hồi nhận lúc: ${responseAt}</span>
+                </div>
+                <div class="response-subject"><strong>Tiêu đề:</strong> ${escapeHtml(responseData.response_subject || 'Re: ' + email.subject)}</div>
+                <div class="response-body">${escapeHtml((responseData.response_body || '').substring(0, 300))}${(responseData.response_body || '').length > 300 ? '...' : ''}</div>
+            </div>
+        `;
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content email-status-card">
+            <div class="email-status-header">
+                <i class="fas ${statusIcon}" style="color: ${statusColor};"></i>
+                <span>Chi tiết Email #${email.id}</span>
+                <span class="email-status-badge ${hasResponse ? 'success' : 'pending'}">${statusText}</span>
+            </div>
+            <div class="email-status-info">
+                <div class="email-info-row">
+                    <i class="fas fa-user"></i>
+                    <span><strong>Người nhận:</strong> ${escapeHtml(email.recipient_email)}</span>
+                </div>
+                <div class="email-info-row">
+                    <i class="fas fa-envelope"></i>
+                    <span><strong>Tiêu đề:</strong> ${escapeHtml(email.subject || 'Không có tiêu đề')}</span>
+                </div>
+                <div class="email-info-row">
+                    <i class="fas fa-clock"></i>
+                    <span><strong>Gửi lúc:</strong> ${sentAt}</span>
+                </div>
+            </div>
+            ${responseHtml}
+            <div class="email-status-actions">
+                <button class="btn btn-sm btn-outline" onclick="checkEmailStatus(${email.id})">
+                    <i class="fas fa-sync-alt"></i> Cập nhật
+                </button>
+                <button class="btn btn-sm btn-outline" onclick="viewEmailDetails(${email.id})">
+                    <i class="fas fa-eye"></i> Xem đầy đủ
+                </button>
+                <button class="btn btn-sm btn-primary" onclick="replyToEmail(${email.id}, '${escapeHtml(email.recipient_email)}')">
+                    <i class="fas fa-reply"></i> Gửi tiếp
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
 }
 
 // Expose email functions to global scope for inline onclick

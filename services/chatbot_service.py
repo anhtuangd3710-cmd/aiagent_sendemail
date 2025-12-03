@@ -326,6 +326,30 @@ class ChatbotService:
             logger.error(f"Error getting CV statistics: {e}")
             return {}
     
+    def _format_recent_emails(self, emails: List[Dict]) -> str:
+        """Format recent emails for AI context"""
+        if not emails:
+            return "Chưa có email nào được gửi."
+        
+        result = []
+        for i, email in enumerate(emails, 1):
+            sent_at = email.get('sent_at', 'N/A')
+            if isinstance(sent_at, datetime):
+                sent_at = sent_at.strftime('%d/%m/%Y %H:%M')
+            elif isinstance(sent_at, str) and len(sent_at) > 16:
+                sent_at = sent_at[:16].replace('T', ' ')
+            
+            status = "✅ Đã có phản hồi" if email.get('response_received') else "⏳ Chờ phản hồi"
+            
+            result.append(f"""
+  {i}. Email ID #{email.get('id')}
+     - Người nhận: {email.get('recipient_email', 'N/A')}
+     - Tiêu đề: {email.get('subject', 'Không có tiêu đề')[:50]}
+     - Gửi lúc: {sent_at}
+     - Trạng thái: {status}""")
+        
+        return "\n".join(result)
+    
     def _filter_by_time_range(self, emails: List[Dict], time_range: str) -> List[Dict]:
         """Filter emails by time range"""
         now = datetime.now()
@@ -609,6 +633,10 @@ class ChatbotService:
             cv_stats = self.get_cv_statistics(user_id, is_admin=is_admin)
             user_stats = self._get_user_statistics_admin() if is_admin else None
             
+            # Get recent emails for context
+            recent_emails = self.database.get_recent_emails(user_id, limit=5)
+            recent_emails_context = self._format_recent_emails(recent_emails)
+            
             # Build context for AI
             admin_context = ""
             if is_admin and user_stats:
@@ -670,6 +698,9 @@ Quyết định từ phản hồi:
 - Chưa quyết định: {email_stats.get('decisions', {}).get('undecided', 0)}
 - Cần thêm thông tin: {email_stats.get('decisions', {}).get('needs_more_info', 0)}
 
+=== DANH SÁCH EMAIL GẦN NHẤT ===
+{recent_emails_context}
+
 Top 5 người nhận email:
 {json.dumps(email_stats.get('top_recipients', []), ensure_ascii=False, indent=2)}
 
@@ -699,6 +730,13 @@ Phân bố điểm CV:
 - Sử dụng emoji để làm nổi bật thông tin quan trọng
 - Định dạng với bullet points cho dễ đọc
 
+=== TÍNH NĂNG XEM TRẠNG THÁI EMAIL ===
+Khi người dùng hỏi về trạng thái email gần nhất/mới nhất:
+- Hiển thị thông tin chi tiết của email gần nhất từ DANH SÁCH EMAIL GẦN NHẤT
+- Bao gồm: người nhận, tiêu đề, thời gian gửi, trạng thái phản hồi
+- Nếu có phản hồi, tóm tắt nội dung phản hồi
+- Set show_email_status=true và email_id=<id của email> trong INTENT
+
 === TÍNH NĂNG GỬI EMAIL ===
 Bạn có thể giúp người dùng soạn và gửi email. Khi người dùng muốn gửi email:
 - LUÔN set show_email_form=true để hiện form gửi email
@@ -707,7 +745,7 @@ Bạn có thể giúp người dùng soạn và gửi email. Khi người dùng 
 
 === QUAN TRỌNG: PHÂN TÍCH Ý ĐỊNH ===
 Sau khi trả lời, hãy thêm một dòng ở cuối response với format:
-[INTENT: chart_type=<loại>, show_chart=<true/false>, show_export=<true/false>, show_email_form=<true/false>, email_data=<json_hoặc_none>]
+[INTENT: chart_type=<loại>, show_chart=<true/false>, show_export=<true/false>, show_email_form=<true/false>, show_email_status=<true/false>, email_id=<id_hoặc_none>, email_data=<json_hoặc_none>]
 
 Các chart_type có thể là:
 - "pie", "bar", "horizontalBar", "line", "doughnut", "radar", "polarArea"
@@ -720,13 +758,17 @@ Khi người dùng muốn GỬI EMAIL (gửi mail, soạn email, compose, send e
 - email_data chứa thông tin nếu có: {{"to_email": "...", "to_name": "...", "purpose": "...", "tone": "formal/friendly/casual", "language": "vi/en"}}
 - Nếu chưa có thông tin: email_data=none
 
+Khi người dùng muốn XEM TRẠNG THÁI EMAIL GẦN NHẤT/MỚI NHẤT:
+- Set show_email_status=true và email_id=<id của email gần nhất từ danh sách>
+- Hiển thị đầy đủ thông tin: người nhận, tiêu đề, thời gian, trạng thái
+
 Ví dụ:
-- "Gửi email cho abc@gmail.com về việc họp" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data={{"to_email":"abc@gmail.com","purpose":"mời họp","tone":"formal","language":"vi"}}]
-- "Tôi muốn gửi email" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data=none]
-- "Soạn mail" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data=none]
-- "Thống kê email" → [INTENT: chart_type=stats_cards, show_chart=true, show_export=false, show_email_form=false, email_data=none]
-- "Ai gửi email nhiều nhất?" → [INTENT: chart_type=horizontalBar, show_chart=true, show_export=false, show_email_form=false, email_data=none]
-- "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, email_data=none]
+- "Gửi email cho abc@gmail.com về việc họp" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, show_email_status=false, email_id=none, email_data={{"to_email":"abc@gmail.com","purpose":"mời họp","tone":"formal","language":"vi"}}]
+- "Tôi muốn gửi email" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, show_email_status=false, email_id=none, email_data=none]
+- "Xem trạng thái email gần nhất" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=true, email_id=<id_email_gần_nhất>, email_data=none]
+- "Email mới gửi có phản hồi chưa?" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=true, email_id=<id_email_gần_nhất>, email_data=none]
+- "Thống kê email" → [INTENT: chart_type=stats_cards, show_chart=true, show_export=false, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
+- "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
 """
             
             # Generate AI response with intent analysis
@@ -755,6 +797,8 @@ Ví dụ:
                 'show_chart': intent['show_chart'],
                 'show_export': intent['show_export'],
                 'show_email_form': intent.get('show_email_form', False),
+                'show_email_status': intent.get('show_email_status', False),
+                'email_id': intent.get('email_id'),
                 'email_data': intent.get('email_data'),
                 'chart_type': intent['chart_type'],
                 'chart_data': chart_data,
@@ -794,14 +838,16 @@ Ví dụ:
             'show_chart': False,
             'show_export': False,
             'show_email_form': False,
+            'show_email_status': False,
+            'email_id': None,
             'email_data': None
         }
         
         try:
-            # First try to find intent line with email_data
-            # Pattern: [INTENT: chart_type=xxx, show_chart=xxx, show_export=xxx, show_email_form=xxx, email_data=xxx]
+            # Try to find intent line with all parameters including email_status
+            # Pattern: [INTENT: chart_type=xxx, show_chart=xxx, show_export=xxx, show_email_form=xxx, show_email_status=xxx, email_id=xxx, email_data=xxx]
             intent_match = re.search(
-                r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^,]+),\s*show_email_form=([^,\]]+)(?:,\s*email_data=(.+?))?\]', 
+                r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^,]+),\s*show_email_form=([^,]+),\s*show_email_status=([^,]+),\s*email_id=([^,\]]+)(?:,\s*email_data=(.+?))?\]', 
                 response
             )
             
@@ -810,13 +856,22 @@ Ví dụ:
                 show_chart = intent_match.group(2).strip().lower() == 'true'
                 show_export = intent_match.group(3).strip().lower() == 'true'
                 show_email_form = intent_match.group(4).strip().lower() == 'true'
-                email_data_str = intent_match.group(5).strip() if intent_match.group(5) else 'none'
+                show_email_status = intent_match.group(5).strip().lower() == 'true'
+                email_id_str = intent_match.group(6).strip()
+                email_data_str = intent_match.group(7).strip() if intent_match.group(7) else 'none'
+                
+                # Parse email_id
+                email_id = None
+                if email_id_str and email_id_str.lower() != 'none':
+                    try:
+                        email_id = int(email_id_str)
+                    except:
+                        email_id = None
                 
                 # Parse email_data JSON
                 email_data = None
                 if email_data_str and email_data_str.lower() != 'none':
                     try:
-                        # Clean up the JSON string
                         email_data_str = email_data_str.rstrip(']').strip()
                         email_data = json.loads(email_data_str)
                     except:
@@ -827,23 +882,58 @@ Ví dụ:
                     'show_chart': show_chart,
                     'show_export': show_export,
                     'show_email_form': show_email_form,
+                    'show_email_status': show_email_status,
+                    'email_id': email_id,
                     'email_data': email_data
                 }
-            else:
-                # Try old format for backward compatibility (3 params only)
-                old_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\],]+)\]?', response)
-                if old_match:
-                    chart_type = old_match.group(1).strip().lower()
-                    show_chart = old_match.group(2).strip().lower() == 'true'
-                    show_export = old_match.group(3).strip().lower() == 'true'
-                    
-                    return {
-                        'chart_type': chart_type if chart_type != 'none' else 'none',
-                        'show_chart': show_chart,
-                        'show_export': show_export,
-                        'show_email_form': False,
-                        'email_data': None
-                    }
+            
+            # Try format with email_form but without email_status (backward compat)
+            intent_match2 = re.search(
+                r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^,]+),\s*show_email_form=([^,\]]+)(?:,\s*email_data=(.+?))?\]', 
+                response
+            )
+            
+            if intent_match2:
+                chart_type = intent_match2.group(1).strip().lower()
+                show_chart = intent_match2.group(2).strip().lower() == 'true'
+                show_export = intent_match2.group(3).strip().lower() == 'true'
+                show_email_form = intent_match2.group(4).strip().lower() == 'true'
+                email_data_str = intent_match2.group(5).strip() if intent_match2.group(5) else 'none'
+                
+                email_data = None
+                if email_data_str and email_data_str.lower() != 'none':
+                    try:
+                        email_data_str = email_data_str.rstrip(']').strip()
+                        email_data = json.loads(email_data_str)
+                    except:
+                        email_data = None
+                
+                return {
+                    'chart_type': chart_type if chart_type != 'none' else 'none',
+                    'show_chart': show_chart,
+                    'show_export': show_export,
+                    'show_email_form': show_email_form,
+                    'show_email_status': False,
+                    'email_id': None,
+                    'email_data': email_data
+                }
+            
+            # Try old format for backward compatibility (3 params only)
+            old_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\],]+)\]?', response)
+            if old_match:
+                chart_type = old_match.group(1).strip().lower()
+                show_chart = old_match.group(2).strip().lower() == 'true'
+                show_export = old_match.group(3).strip().lower() == 'true'
+                
+                return {
+                    'chart_type': chart_type if chart_type != 'none' else 'none',
+                    'show_chart': show_chart,
+                    'show_export': show_export,
+                    'show_email_form': False,
+                    'show_email_status': False,
+                    'email_id': None,
+                    'email_data': None
+                }
         except Exception as e:
             logger.error(f"Error parsing AI intent: {e}")
         
