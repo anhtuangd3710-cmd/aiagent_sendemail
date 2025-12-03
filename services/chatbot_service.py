@@ -22,15 +22,21 @@ class ChatbotService:
         self.ai_agent = ai_agent
     
     def _get_all_emails_admin(self) -> List[Dict]:
-        """Get all emails from all users (admin only)"""
+        """Get all emails from all users (admin only) with responses"""
         try:
             emails = self.database.query_raw(
-                """SELECT e.*, u.username as user_name, u.email as user_email 
+                """SELECT DISTINCT ON (e.id) e.*, 
+                          u.username as user_name, u.email as user_email,
+                          r.response_body, r.response_subject,
+                          r.analysis, r.received_at as response_received_at
                    FROM sent_emails e 
                    LEFT JOIN users u ON e.user_id = u.id 
-                   ORDER BY e.sent_at DESC"""
+                   LEFT JOIN responses r ON e.id = r.sent_email_id
+                   ORDER BY e.id, r.received_at DESC NULLS LAST"""
             )
-            return emails or []
+            # Sort by sent_at descending after DISTINCT ON
+            result = sorted(emails or [], key=lambda x: x.get('sent_at', ''), reverse=True)
+            return result
         except Exception as e:
             logger.error(f"Error getting all emails for admin: {e}")
             return []
