@@ -327,7 +327,7 @@ class ChatbotService:
             return {}
     
     def _format_recent_emails(self, emails: List[Dict]) -> str:
-        """Format recent emails for AI context"""
+        """Format recent emails for AI context with response details"""
         if not emails:
             return "Chưa có email nào được gửi."
         
@@ -339,14 +339,33 @@ class ChatbotService:
             elif isinstance(sent_at, str) and len(sent_at) > 16:
                 sent_at = sent_at[:16].replace('T', ' ')
             
-            status = "✅ Đã có phản hồi" if email.get('response_received') else "⏳ Chờ phản hồi"
+            has_response = email.get('response_received')
+            status = "✅ Đã có phản hồi" if has_response else "⏳ Chờ phản hồi"
             
-            result.append(f"""
+            email_info = f"""
   {i}. Email ID #{email.get('id')}
      - Người nhận: {email.get('recipient_email', 'N/A')}
      - Tiêu đề: {email.get('subject', 'Không có tiêu đề')[:50]}
      - Gửi lúc: {sent_at}
-     - Trạng thái: {status}""")
+     - Trạng thái: {status}"""
+            
+            # Include response details if available
+            if has_response and email.get('response_body'):
+                response_subject = email.get('response_subject', 'Re: ' + (email.get('subject') or ''))
+                response_body = email.get('response_body', '')[:500]  # Limit to 500 chars
+                received_at = email.get('response_received_at', '')
+                if isinstance(received_at, datetime):
+                    received_at = received_at.strftime('%d/%m/%Y %H:%M')
+                elif isinstance(received_at, str) and len(received_at) > 16:
+                    received_at = received_at[:16].replace('T', ' ')
+                
+                email_info += f"""
+     📬 PHẢN HỒI:
+        - Nhận lúc: {received_at}
+        - Tiêu đề phản hồi: {response_subject[:50]}
+        - Nội dung phản hồi: {response_body}"""
+            
+            result.append(email_info)
         
         return "\n".join(result)
     
@@ -730,12 +749,17 @@ Phân bố điểm CV:
 - Sử dụng emoji để làm nổi bật thông tin quan trọng
 - Định dạng với bullet points cho dễ đọc
 
-=== TÍNH NĂNG XEM TRẠNG THÁI EMAIL ===
+=== TÍNH NĂNG XEM TRẠNG THÁI EMAIL VÀ PHẢN HỒI ===
 Khi người dùng hỏi về trạng thái email gần nhất/mới nhất:
 - Hiển thị thông tin chi tiết của email gần nhất từ DANH SÁCH EMAIL GẦN NHẤT
 - Bao gồm: người nhận, tiêu đề, thời gian gửi, trạng thái phản hồi
-- Nếu có phản hồi, tóm tắt nội dung phản hồi
 - Set show_email_status=true và email_id=<id của email> trong INTENT
+
+Khi người dùng muốn XEM CHI TIẾT PHẢN HỒI:
+- Nếu email đã có phản hồi (có mục 📬 PHẢN HỒI trong danh sách), HIỂN THỊ NGAY nội dung phản hồi trong câu trả lời
+- Trích dẫn đầy đủ: tiêu đề phản hồi, thời gian nhận, NỘI DUNG PHẢN HỒI
+- Định dạng đẹp với quote hoặc blockquote
+- Set show_email_status=true và email_id để hiện card chi tiết
 
 === TÍNH NĂNG GỬI EMAIL ===
 Bạn có thể giúp người dùng soạn và gửi email. Khi người dùng muốn gửi email:
@@ -762,13 +786,18 @@ Khi người dùng muốn XEM TRẠNG THÁI EMAIL GẦN NHẤT/MỚI NHẤT:
 - Set show_email_status=true và email_id=<id của email gần nhất từ danh sách>
 - Hiển thị đầy đủ thông tin: người nhận, tiêu đề, thời gian, trạng thái
 
+Khi người dùng muốn XEM CHI TIẾT PHẢN HỒI:
+- HIỂN THỊ NGAY trong câu trả lời: nội dung phản hồi từ mục 📬 PHẢN HỒI trong danh sách email
+- Định dạng đẹp, trích dẫn nội dung phản hồi đầy đủ
+- Set show_email_status=true và email_id để hiện thêm card chi tiết
+
 Ví dụ:
 - "Gửi email cho abc@gmail.com về việc họp" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, show_email_status=false, email_id=none, email_data={{"to_email":"abc@gmail.com","purpose":"mời họp","tone":"formal","language":"vi"}}]
 - "Tôi muốn gửi email" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, show_email_status=false, email_id=none, email_data=none]
 - "Xem trạng thái email gần nhất" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=true, email_id=<id_email_gần_nhất>, email_data=none]
-- "Email mới gửi có phản hồi chưa?" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=true, email_id=<id_email_gần_nhất>, email_data=none]
+- "Xem chi tiết phản hồi email gần nhất" → Hiển thị nội dung phản hồi trong text + [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=true, email_id=<id_email>, email_data=none]
+- "Người ta phản hồi gì?" → Hiển thị nội dung phản hồi đầy đủ trong câu trả lời + [INTENT: show_email_status=true, email_id=<id>...]
 - "Thống kê email" → [INTENT: chart_type=stats_cards, show_chart=true, show_export=false, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
-- "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
 """
             
             # Generate AI response with intent analysis
