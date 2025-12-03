@@ -821,13 +821,13 @@ def send_email_from_chat():
         sender_name = user_settings.get('sender_name', request.current_user.get('name', 'User'))
         
         # Send email
-        send_result = user_email_service.send_email(
-            to_email=to_email,
+        send_success = user_email_service.send_email(
+            recipient_email=to_email,
             subject=subject,
             body=body
         )
         
-        if send_result.get('success'):
+        if send_success:
             # Track the email
             email_id = database.create_email_tracking(
                 user_id=user_id,
@@ -851,7 +851,7 @@ def send_email_from_chat():
         else:
             return jsonify({
                 "success": False,
-                "message": send_result.get('error', 'Không thể gửi email')
+                "message": "Không thể gửi email. Vui lòng kiểm tra cấu hình Email/App Password."
             }), 500
         
     except Exception as e:
