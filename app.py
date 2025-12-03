@@ -2637,13 +2637,17 @@ def chatbot_quick_stats():
 @app.route('/api/chatbot/sessions', methods=['GET'])
 @login_required
 def get_chat_sessions():
-    """Get all chat sessions for current user"""
+    """Get all chat sessions for current user with optional pagination"""
     try:
         user_id = request.current_user['id']
-        sessions = database.get_chat_sessions(user_id)
+        limit = request.args.get('limit', type=int)
+        offset = request.args.get('offset', 0, type=int)
+        
+        sessions = database.get_chat_sessions(user_id, limit=limit, offset=offset)
         return jsonify({
             "success": True,
-            "sessions": sessions
+            "sessions": sessions,
+            "has_more": len(sessions) == limit if limit else False
         })
     except Exception as e:
         return jsonify({

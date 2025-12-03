@@ -4838,6 +4838,15 @@ function formatVND(num) {
 // Initialize YouTube on page load
 document.addEventListener('DOMContentLoaded', () => {
     initYouTubeAnalyzer();
+    
+    // Initialize chatbot if it's the active page
+    const chatbotPage = document.getElementById('page-chatbot');
+    if (chatbotPage && chatbotPage.classList.contains('active')) {
+        // Small delay to ensure DOM is ready
+        setTimeout(() => {
+            initChatbot();
+        }, 10);
+    }
 });
 
 // ==================== CHATBOT FUNCTIONS ====================
@@ -4976,6 +4985,54 @@ function setupMobileSessionsToggle() {
 // Chat Session Management
 let currentSessionId = null;
 
+// Session cache for faster loading
+const sessionCache = {
+    list: null,
+    listTimestamp: 0,
+    messages: new Map(),
+    TTL: 60000, // 1 minute cache
+    
+    isListValid() {
+        return this.list && (Date.now() - this.listTimestamp) < this.TTL;
+    },
+    
+    setList(sessions) {
+        this.list = sessions;
+        this.listTimestamp = Date.now();
+    },
+    
+    getMessages(sessionId) {
+        const cached = this.messages.get(sessionId);
+        if (cached && (Date.now() - cached.timestamp) < this.TTL) {
+            return cached.data;
+        }
+        return null;
+    },
+    
+    setMessages(sessionId, messages) {
+        this.messages.set(sessionId, {
+            data: messages,
+            timestamp: Date.now()
+        });
+    },
+    
+    invalidate() {
+        this.list = null;
+        this.listTimestamp = 0;
+        this.hasMore = true;
+        this.offset = 0;
+    },
+    
+    invalidateMessages(sessionId) {
+        this.messages.delete(sessionId);
+    },
+    
+    // Pagination state
+    hasMore: true,
+    offset: 0,
+    pageSize: 15
+};
+
 function setupChatSessions() {
     // New chat button
     const newChatBtn = document.getElementById('new-chat-btn');
@@ -4989,29 +5046,170 @@ function setupChatSessions() {
         clearAllBtn.addEventListener('click', clearAllSessions);
     }
     
-    // Load existing sessions in background (non-blocking)
-    setTimeout(() => {
-        loadChatSessions();
-    }, 50);
+    // Setup infinite scroll for sessions
+    const sessionsList = document.getElementById('sessions-list');
+    if (sessionsList) {
+        sessionsList.addEventListener('scroll', handleSessionsScroll);
+    }
+    
+    // Show skeleton loading immediately
+    showSessionsSkeleton();
+    
+    // Load sessions in background
+    requestIdleCallback ? requestIdleCallback(() => loadChatSessions()) : setTimeout(loadChatSessions, 10);
 }
 
-async function loadChatSessions() {
+// Debounce for scroll handler
+let scrollTimeout = null;
+function handleSessionsScroll(e) {
+    if (scrollTimeout) return;
+    
+    scrollTimeout = setTimeout(() => {
+        const container = e.target;
+        const scrollBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+        
+        // Load more when near bottom (50px threshold)
+        if (scrollBottom < 50 && sessionCache.hasMore && !document.querySelector('.loading-more')) {
+            loadMoreSessions();
+        }
+        scrollTimeout = null;
+    }, 100);
+}
+
+async function loadMoreSessions() {
+    if (!sessionCache.hasMore) return;
+    
+    // Add loading indicator
+    const container = document.getElementById('sessions-list');
+    if (!container) return;
+    
+    const loadingMore = document.createElement('div');
+    loadingMore.className = 'loading-more';
+    loadingMore.innerHTML = '<div class="loading-spinner-sm"></div>';
+    container.appendChild(loadingMore);
+    
     try {
-        const response = await fetch('/api/chatbot/sessions');
+        const response = await fetch(`/api/chatbot/sessions?limit=${sessionCache.pageSize}&offset=${sessionCache.offset}`);
+        const data = await response.json();
+        
+        if (data.success && data.sessions.length > 0) {
+            // Append to cache
+            sessionCache.list = [...(sessionCache.list || []), ...data.sessions];
+            sessionCache.offset += data.sessions.length;
+            sessionCache.hasMore = data.has_more;
+            sessionCache.listTimestamp = Date.now();
+            
+            // Append items to DOM
+            appendSessionsToList(data.sessions);
+        } else {
+            sessionCache.hasMore = false;
+        }
+    } catch (error) {
+        console.error('Error loading more sessions:', error);
+    } finally {
+        loadingMore.remove();
+    }
+}
+
+function appendSessionsToList(sessions) {
+    const container = document.getElementById('sessions-list');
+    if (!container) return;
+    
+    sessions.forEach(session => {
+        const sessionEl = document.createElement('div');
+        sessionEl.className = `session-item${session.id === currentSessionId ? ' active' : ''}`;
+        sessionEl.dataset.sessionId = session.id;
+        sessionEl.onclick = () => selectSession(session.id);
+        sessionEl.innerHTML = `
+            <div class="session-icon">
+                <i class="fas fa-comment-dots"></i>
+            </div>
+            <div class="session-info">
+                <span class="session-title">${escapeHtml(session.title || 'Cuộc hội thoại mới')}</span>
+                <span class="session-time">${formatTimeAgo(session.updated_at)}</span>
+            </div>
+            <button class="session-delete-btn" onclick="event.stopPropagation(); deleteSession(${session.id})" title="Xóa">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+        container.appendChild(sessionEl);
+    });
+}
+
+function showSessionsSkeleton() {
+    const container = document.getElementById('sessions-list');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="session-skeleton">
+            <div class="skeleton-item"></div>
+            <div class="skeleton-item"></div>
+            <div class="skeleton-item"></div>
+        </div>
+    `;
+}
+
+async function loadChatSessions(forceRefresh = false) {
+    try {
+        // Use cache if valid
+        if (!forceRefresh && sessionCache.isListValid()) {
+            renderSessionsList(sessionCache.list);
+            return;
+        }
+        
+        // Reset pagination
+        sessionCache.offset = 0;
+        sessionCache.hasMore = true;
+        
+        const response = await fetch(`/api/chatbot/sessions?limit=${sessionCache.pageSize}`);
         const data = await response.json();
         
         if (data.success) {
+            // Cache the result
+            sessionCache.setList(data.sessions);
+            sessionCache.offset = data.sessions.length;
+            sessionCache.hasMore = data.has_more;
             renderSessionsList(data.sessions);
             
             // Set current session
             if (data.sessions.length > 0 && !currentSessionId) {
                 currentSessionId = data.sessions[0].id;
-                loadSessionMessages(currentSessionId);
+                document.querySelectorAll('.session-item').forEach(item => {
+                    item.classList.toggle('active', parseInt(item.dataset.sessionId) === currentSessionId);
+                });
+                
+                // Prefetch first session messages in background
+                prefetchSessionMessages(currentSessionId);
             }
         }
     } catch (error) {
         console.error('Error loading sessions:', error);
+        // Show error state
+        const container = document.getElementById('sessions-list');
+        if (container) {
+            container.innerHTML = `
+                <div class="no-sessions">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Không thể tải lịch sử</p>
+                    <button onclick="loadChatSessions(true)" class="btn-retry">Thử lại</button>
+                </div>
+            `;
+        }
     }
+}
+
+// Prefetch messages in background
+function prefetchSessionMessages(sessionId) {
+    if (sessionCache.getMessages(sessionId)) return;
+    
+    fetch(`/api/chatbot/sessions/${sessionId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                sessionCache.setMessages(sessionId, data);
+            }
+        })
+        .catch(() => {}); // Silently fail for prefetch
 }
 
 function renderSessionsList(sessions) {
@@ -5063,46 +5261,80 @@ async function selectSession(sessionId) {
 
 async function loadSessionMessages(sessionId) {
     try {
+        // Check cache first
+        const cached = sessionCache.getMessages(sessionId);
+        if (cached) {
+            renderSessionMessages(cached);
+            return;
+        }
+        
+        // Show loading state
+        const container = document.getElementById('chatbot-messages');
+        if (container) {
+            container.innerHTML = `
+                <div class="loading-messages">
+                    <div class="loading-spinner"></div>
+                    <p>Đang tải tin nhắn...</p>
+                </div>
+            `;
+        }
+        
         const response = await fetch(`/api/chatbot/sessions/${sessionId}`);
         const data = await response.json();
         
         if (data.success) {
-            // Clear current messages
-            const container = document.getElementById('chatbot-messages');
-            if (container) {
-                // Keep welcome message and suggestions
-                container.innerHTML = `
-                    <div class="chat-message bot">
-                        <div class="message-avatar">
-                            <i class="fas fa-robot"></i>
-                        </div>
-                        <div class="message-content">
-                            <div class="message-text">
-                                <p>📝 <strong>${escapeHtml(data.session.title || 'Cuộc hội thoại')}</strong></p>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                // Add messages
-                data.messages.forEach(msg => {
-                    addChatMessage(msg.content, msg.role, false);
-                    
-                    // Render chart inline if message has chart data
-                    if (msg.has_chart && msg.chart_data) {
-                        addChartMessage(msg.chart_data);
-                    }
-                    
-                    // Render email form if message has email form
-                    if (msg.has_email_form) {
-                        addEmailFormMessage(msg.email_data);
-                    }
-                });
-            }
+            // Cache the messages
+            sessionCache.setMessages(sessionId, data);
+            renderSessionMessages(data);
         }
     } catch (error) {
         console.error('Error loading session messages:', error);
+        const container = document.getElementById('chatbot-messages');
+        if (container) {
+            container.innerHTML = `
+                <div class="error-messages">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <p>Không thể tải tin nhắn</p>
+                    <button onclick="loadSessionMessages(${sessionId})" class="btn-retry">Thử lại</button>
+                </div>
+            `;
+        }
     }
+}
+
+function renderSessionMessages(data) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    // Clear current messages
+    container.innerHTML = `
+        <div class="chat-message bot">
+            <div class="message-avatar">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="message-content">
+                <div class="message-text">
+                    <p>📝 <strong>${escapeHtml(data.session.title || 'Cuộc hội thoại')}</strong></p>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add messages using DocumentFragment for better performance
+    const fragment = document.createDocumentFragment();
+    data.messages.forEach(msg => {
+        addChatMessage(msg.content, msg.role, false);
+        
+        // Render chart inline if message has chart data
+        if (msg.has_chart && msg.chart_data) {
+            addChartMessage(msg.chart_data);
+        }
+        
+        // Render email form if message has email form
+        if (msg.has_email_form) {
+            addEmailFormMessage(msg.email_data);
+        }
+    });
 }
 
 async function createNewSession() {
@@ -5117,8 +5349,10 @@ async function createNewSession() {
         
         if (data.success) {
             currentSessionId = data.session_id;
-            await loadChatSessions();
             clearChatHistory();
+            // Invalidate cache and reload
+            sessionCache.invalidate();
+            loadChatSessions(true);
         }
     } catch (error) {
         console.error('Error creating session:', error);
@@ -5136,12 +5370,16 @@ async function deleteSession(sessionId) {
         const data = await response.json();
         
         if (data.success) {
+            // Invalidate caches
+            sessionCache.invalidate();
+            sessionCache.invalidateMessages(sessionId);
+            
             // If deleted current session, create new one
             if (sessionId === currentSessionId) {
                 currentSessionId = null;
                 clearChatHistory();
             }
-            await loadChatSessions();
+            await loadChatSessions(true);
         }
     } catch (error) {
         console.error('Error deleting session:', error);
@@ -5162,8 +5400,12 @@ async function clearAllSessions() {
                 });
             }
             
+            // Clear all caches
+            sessionCache.invalidate();
+            sessionCache.messages.clear();
+            
             currentSessionId = null;
-            await loadChatSessions();
+            await loadChatSessions(true);
             clearChatHistory();
         }
     } catch (error) {
@@ -5664,99 +5906,74 @@ function addEmailFormMessage(emailData = null, emailConfigured = true) {
                 <span>Soạn Email với AI</span>
             </div>
             
-            <!-- Email Options Tabs -->
-            <div class="email-options-tabs">
-                <button type="button" class="email-tab active" onclick="switchEmailTab('${formId}', 'form')">
-                    <i class="fas fa-wpforms"></i> Dùng Form
-                </button>
-                <button type="button" class="email-tab" onclick="switchEmailTab('${formId}', 'manual')">
-                    <i class="fas fa-keyboard"></i> Nhập tay
-                </button>
-            </div>
+            <p class="email-form-hint">
+                <i class="fas fa-lightbulb"></i> Điền thông tin bên dưới, AI sẽ tự động tạo nội dung và gửi email cho bạn.
+                <br><small>💡 Hoặc bạn có thể nhập trực tiếp vào khung chat, ví dụ: "Gửi email đến abc@gmail.com với nội dung..."</small>
+            </p>
             
-            <!-- Form Mode -->
-            <form id="${formId}" class="chat-email-form" onsubmit="sendEmailFromChat(event, '${formId}')">
-                <div class="email-mode email-mode-form active" data-mode="form">
-                    <div class="email-form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-at"></i> Email người nhận</label>
-                            <input type="email" name="to_email" value="${escapeHtml(toEmail)}" placeholder="example@email.com" required>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-user"></i> Tên người nhận</label>
-                            <input type="text" name="to_name" value="${escapeHtml(toName)}" placeholder="Tên người nhận">
-                        </div>
-                    </div>
-                    
+            <form id="${formId}" class="chat-email-form" onsubmit="confirmAndSendEmail(event, '${formId}')">
+                <div class="email-form-row">
                     <div class="form-group">
-                        <label><i class="fas fa-comment-alt"></i> Mục đích / Nội dung chính</label>
-                        <textarea name="purpose" rows="2" placeholder="Mô tả ngắn về mục đích email..." required>${escapeHtml(purpose)}</textarea>
+                        <label><i class="fas fa-at"></i> Email người nhận *</label>
+                        <input type="email" name="to_email" value="${escapeHtml(toEmail)}" placeholder="example@email.com" required>
                     </div>
-                    
-                    <div class="email-form-row">
-                        <div class="form-group">
-                            <label><i class="fas fa-palette"></i> Phong cách</label>
-                            <select name="tone">
-                                <option value="formal" ${tone === 'formal' ? 'selected' : ''}>📝 Trang trọng</option>
-                                <option value="friendly" ${tone === 'friendly' ? 'selected' : ''}>😊 Thân thiện</option>
-                                <option value="casual" ${tone === 'casual' ? 'selected' : ''}>💬 Giản dị</option>
-                                <option value="professional" ${tone === 'professional' ? 'selected' : ''}>👔 Chuyên nghiệp</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label><i class="fas fa-language"></i> Ngôn ngữ</label>
-                            <select name="language">
-                                <option value="vi" ${language === 'vi' ? 'selected' : ''}>🇻🇳 Tiếng Việt</option>
-                                <option value="en" ${language === 'en' ? 'selected' : ''}>🇺🇸 English</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div class="email-form-actions">
-                        <button type="button" class="btn btn-secondary" onclick="generateEmailPreview('${formId}')">
-                            <i class="fas fa-magic"></i> Tạo nội dung AI
-                        </button>
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-paper-plane"></i> Gửi email
-                        </button>
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Tên người nhận</label>
+                        <input type="text" name="to_name" value="${escapeHtml(toName)}" placeholder="Tên người nhận (tùy chọn)">
                     </div>
                 </div>
                 
-                <!-- Manual Mode -->
-                <div class="email-mode email-mode-manual" data-mode="manual">
+                <div class="form-group">
+                    <label><i class="fas fa-comment-alt"></i> Mục đích / Nội dung chính *</label>
+                    <textarea name="purpose" rows="3" placeholder="Mô tả ngắn về mục đích email, AI sẽ tạo nội dung chi tiết..." required>${escapeHtml(purpose)}</textarea>
+                </div>
+                
+                <div class="email-form-row">
                     <div class="form-group">
-                        <label><i class="fas fa-at"></i> Email người nhận *</label>
-                        <input type="email" name="manual_to_email" placeholder="example@email.com">
+                        <label><i class="fas fa-palette"></i> Phong cách</label>
+                        <select name="tone">
+                            <option value="formal" ${tone === 'formal' ? 'selected' : ''}>📝 Trang trọng</option>
+                            <option value="friendly" ${tone === 'friendly' ? 'selected' : ''}>😊 Thân thiện</option>
+                            <option value="casual" ${tone === 'casual' ? 'selected' : ''}>💬 Giản dị</option>
+                            <option value="professional" ${tone === 'professional' ? 'selected' : ''}>👔 Chuyên nghiệp</option>
+                        </select>
                     </div>
-                    
                     <div class="form-group">
-                        <label><i class="fas fa-heading"></i> Tiêu đề email *</label>
-                        <input type="text" name="manual_subject" placeholder="Tiêu đề email...">
+                        <label><i class="fas fa-language"></i> Ngôn ngữ</label>
+                        <select name="language">
+                            <option value="vi" ${language === 'vi' ? 'selected' : ''}>🇻🇳 Tiếng Việt</option>
+                            <option value="en" ${language === 'en' ? 'selected' : ''}>🇺🇸 English</option>
+                        </select>
                     </div>
-                    
-                    <div class="form-group">
-                        <label><i class="fas fa-align-left"></i> Nội dung email *</label>
-                        <textarea name="manual_body" rows="6" placeholder="Nhập nội dung email của bạn..."></textarea>
+                </div>
+                
+                <div class="email-form-actions">
+                    <button type="submit" class="btn btn-primary btn-confirm-send">
+                        <i class="fas fa-paper-plane"></i> Xác nhận gửi email
+                    </button>
+                </div>
+                
+                <div class="email-sending-status" id="status-${formId}" style="display: none;">
+                    <div class="status-step" data-step="generate">
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        <span>AI đang tạo nội dung email...</span>
                     </div>
-                    
-                    <div class="email-form-actions">
-                        <button type="button" class="btn btn-primary" onclick="sendManualEmail('${formId}')">
-                            <i class="fas fa-paper-plane"></i> Gửi email
-                        </button>
+                    <div class="status-step" data-step="preview" style="display: none;">
+                        <i class="fas fa-check-circle"></i>
+                        <span>Nội dung đã tạo xong</span>
+                    </div>
+                    <div class="status-step" data-step="sending" style="display: none;">
+                        <i class="fas fa-circle-notch fa-spin"></i>
+                        <span>Đang gửi email...</span>
                     </div>
                 </div>
                 
                 <div class="email-preview-section" id="preview-${formId}" style="display: none;">
                     <div class="preview-header">
-                        <label><i class="fas fa-eye"></i> Xem trước email</label>
-                        <button type="button" class="btn-edit-preview" onclick="editEmailPreview('${formId}')">
-                            <i class="fas fa-edit"></i> Chỉnh sửa
-                        </button>
+                        <label><i class="fas fa-eye"></i> Nội dung email sẽ gửi</label>
                     </div>
                     <div class="preview-subject"></div>
                     <div class="preview-body"></div>
-                    <input type="hidden" name="subject" value="">
-                    <input type="hidden" name="body" value="">
                 </div>
             </form>
         </div>
@@ -5770,7 +5987,7 @@ function addEmailFormMessage(emailData = null, emailConfigured = true) {
 
 async function generateEmailPreview(formId) {
     const form = document.getElementById(formId);
-    if (!form) return;
+    if (!form) return null;
     
     const toEmail = form.querySelector('input[name="to_email"]').value;
     const toName = form.querySelector('input[name="to_name"]').value;
@@ -5779,15 +5996,8 @@ async function generateEmailPreview(formId) {
     const language = form.querySelector('select[name="language"]').value;
     
     if (!toEmail || !purpose) {
-        showNotification('error', 'Vui lòng nhập email người nhận và mục đích email');
-        return;
+        return null;
     }
-    
-    // Show loading
-    const previewBtn = form.querySelector('.btn-secondary');
-    const originalHTML = previewBtn.innerHTML;
-    previewBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo...';
-    previewBtn.disabled = true;
     
     try {
         const response = await fetch('/api/email/generate', {
@@ -5805,96 +6015,25 @@ async function generateEmailPreview(formId) {
         const data = await response.json();
         
         if (data.success) {
-            // Show preview section
-            const previewSection = document.getElementById('preview-' + formId);
-            previewSection.style.display = 'block';
-            
-            previewSection.querySelector('.preview-subject').innerHTML = `<strong>Chủ đề:</strong> ${escapeHtml(data.subject)}`;
-            previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${data.body.replace(/\n/g, '<br>')}</div>`;
-            
-            // Store in hidden fields
-            form.querySelector('input[name="subject"]').value = data.subject;
-            form.querySelector('input[name="body"]').value = data.body;
-            
-            showNotification('success', 'Đã tạo nội dung email! Kiểm tra và gửi.');
-        } else {
-            showNotification('error', data.message || 'Không thể tạo nội dung email');
+            return {
+                subject: data.subject,
+                body: data.body,
+                toEmail,
+                toName,
+                purpose,
+                tone,
+                language
+            };
         }
+        return null;
     } catch (error) {
         console.error('Error generating email:', error);
-        showNotification('error', 'Lỗi kết nối, vui lòng thử lại');
-    } finally {
-        previewBtn.innerHTML = originalHTML;
-        previewBtn.disabled = false;
+        return null;
     }
 }
 
-function editEmailPreview(formId) {
-    const form = document.getElementById(formId);
-    if (!form) return;
-    
-    const subject = form.querySelector('input[name="subject"]').value;
-    const body = form.querySelector('input[name="body"]').value;
-    
-    // Create edit modal
-    const modal = document.createElement('div');
-    modal.className = 'email-edit-modal';
-    modal.innerHTML = `
-        <div class="modal-overlay" onclick="this.parentElement.remove()"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3><i class="fas fa-edit"></i> Chỉnh sửa Email</h3>
-                <button class="btn-close" onclick="this.closest('.email-edit-modal').remove()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <div class="form-group">
-                    <label>Chủ đề</label>
-                    <input type="text" id="edit-subject-${formId}" value="${escapeHtml(subject)}">
-                </div>
-                <div class="form-group">
-                    <label>Nội dung</label>
-                    <textarea id="edit-body-${formId}" rows="10">${escapeHtml(body)}</textarea>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="this.closest('.email-edit-modal').remove()">
-                    <i class="fas fa-times"></i> Hủy
-                </button>
-                <button class="btn btn-primary" onclick="saveEmailEdit('${formId}')">
-                    <i class="fas fa-save"></i> Lưu thay đổi
-                </button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-}
-
-function saveEmailEdit(formId) {
-    const form = document.getElementById(formId);
-    if (!form) return;
-    
-    const newSubject = document.getElementById('edit-subject-' + formId).value;
-    const newBody = document.getElementById('edit-body-' + formId).value;
-    
-    // Update hidden fields
-    form.querySelector('input[name="subject"]').value = newSubject;
-    form.querySelector('input[name="body"]').value = newBody;
-    
-    // Update preview
-    const previewSection = document.getElementById('preview-' + formId);
-    previewSection.querySelector('.preview-subject').innerHTML = `<strong>Chủ đề:</strong> ${escapeHtml(newSubject)}`;
-    previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${newBody.replace(/\n/g, '<br>')}</div>`;
-    
-    // Close modal
-    document.querySelector('.email-edit-modal').remove();
-    
-    showNotification('success', 'Đã cập nhật nội dung email');
-}
-
-async function sendEmailFromChat(event, formId) {
+// Main function: Confirm and send email automatically
+async function confirmAndSendEmail(event, formId) {
     event.preventDefault();
     
     const form = document.getElementById(formId);
@@ -5905,31 +6044,50 @@ async function sendEmailFromChat(event, formId) {
     const purpose = form.querySelector('textarea[name="purpose"]').value;
     const tone = form.querySelector('select[name="tone"]').value;
     const language = form.querySelector('select[name="language"]').value;
-    let subject = form.querySelector('input[name="subject"]').value;
-    let body = form.querySelector('input[name="body"]').value;
     
-    // If no preview was generated, generate content now
-    if (!subject || !body) {
-        await generateEmailPreview(formId);
-        subject = form.querySelector('input[name="subject"]').value;
-        body = form.querySelector('input[name="body"]').value;
-        
-        if (!subject || !body) {
-            showNotification('error', 'Vui lòng tạo nội dung email trước khi gửi');
-            return;
-        }
-    }
-    
-    // Confirm before sending
-    if (!confirm(`Bạn có chắc muốn gửi email đến ${toEmail}?`)) {
+    if (!toEmail || !purpose) {
+        showNotification('error', 'Vui lòng nhập email người nhận và mục đích email');
         return;
     }
     
-    // Show loading
-    const submitBtn = form.querySelector('button[type="submit"]');
-    const originalHTML = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+    // Show status section
+    const statusSection = document.getElementById('status-' + formId);
+    const previewSection = document.getElementById('preview-' + formId);
+    const submitBtn = form.querySelector('.btn-confirm-send');
+    
+    statusSection.style.display = 'block';
     submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+    
+    // Step 1: Generate email content
+    const generateStep = statusSection.querySelector('[data-step="generate"]');
+    generateStep.style.display = 'flex';
+    
+    const emailContent = await generateEmailPreview(formId);
+    
+    if (!emailContent) {
+        showNotification('error', 'Không thể tạo nội dung email. Vui lòng thử lại.');
+        statusSection.style.display = 'none';
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Xác nhận gửi email';
+        return;
+    }
+    
+    // Step 2: Show preview
+    generateStep.querySelector('i').className = 'fas fa-check-circle';
+    generateStep.querySelector('span').textContent = 'Nội dung đã tạo xong';
+    
+    const previewStep = statusSection.querySelector('[data-step="preview"]');
+    previewStep.style.display = 'flex';
+    
+    // Show preview
+    previewSection.style.display = 'block';
+    previewSection.querySelector('.preview-subject').innerHTML = `<strong>📌 Chủ đề:</strong> ${escapeHtml(emailContent.subject)}`;
+    previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${emailContent.body.replace(/\n/g, '<br>')}</div>`;
+    
+    // Step 3: Send email
+    const sendingStep = statusSection.querySelector('[data-step="sending"]');
+    sendingStep.style.display = 'flex';
     
     try {
         const response = await fetch('/api/email/send', {
@@ -5938,8 +6096,8 @@ async function sendEmailFromChat(event, formId) {
             body: JSON.stringify({
                 to_email: toEmail,
                 to_name: toName,
-                subject: subject,
-                body: body,
+                subject: emailContent.subject,
+                body: emailContent.body,
                 purpose: purpose,
                 tone: tone,
                 language: language
@@ -5949,127 +6107,52 @@ async function sendEmailFromChat(event, formId) {
         const data = await response.json();
         
         if (data.success) {
+            // Success!
+            sendingStep.querySelector('i').className = 'fas fa-check-circle';
+            sendingStep.querySelector('span').textContent = 'Email đã gửi thành công!';
+            
             // Replace form with success message
-            form.innerHTML = `
-                <div class="email-sent-success">
-                    <i class="fas fa-check-circle"></i>
-                    <h4>Email đã gửi thành công!</h4>
-                    <p>Đến: ${escapeHtml(toEmail)}</p>
-                    <p>Chủ đề: ${escapeHtml(subject)}</p>
-                </div>
-            `;
+            setTimeout(() => {
+                form.innerHTML = `
+                    <div class="email-sent-success">
+                        <i class="fas fa-check-circle"></i>
+                        <h4>Email đã gửi thành công!</h4>
+                        <p><strong>Đến:</strong> ${escapeHtml(toEmail)}</p>
+                        <p><strong>Chủ đề:</strong> ${escapeHtml(emailContent.subject)}</p>
+                    </div>
+                `;
+            }, 1000);
             
             showNotification('success', 'Email đã được gửi thành công!');
             
-            // Add bot message about success
+            // Add bot message
             addChatMessage(`✅ Đã gửi email thành công đến **${toEmail}**!`, 'bot');
             
             // Refresh stats
             loadQuickStats();
         } else {
-            showNotification('error', data.message || 'Không thể gửi email');
-            submitBtn.innerHTML = originalHTML;
-            submitBtn.disabled = false;
+            throw new Error(data.message || 'Không thể gửi email');
         }
     } catch (error) {
         console.error('Error sending email:', error);
-        showNotification('error', 'Lỗi kết nối, vui lòng thử lại');
-        submitBtn.innerHTML = originalHTML;
+        sendingStep.querySelector('i').className = 'fas fa-times-circle';
+        sendingStep.querySelector('span').textContent = 'Lỗi khi gửi email';
+        sendingStep.style.color = 'var(--danger-color)';
+        
+        showNotification('error', error.message || 'Lỗi kết nối, vui lòng thử lại');
         submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Thử lại';
     }
 }
 
-// Switch between form and manual email modes
+// Keep old function for backward compatibility but redirect to new one
+async function sendEmailFromChat(event, formId) {
+    return confirmAndSendEmail(event, formId);
+}
+
+// Switch between form and manual email modes - kept for backward compatibility
 function switchEmailTab(formId, mode) {
-    const form = document.getElementById(formId);
-    if (!form) return;
-    
-    // Update tabs
-    const tabs = form.closest('.email-form-container').querySelectorAll('.email-tab');
-    tabs.forEach(tab => {
-        tab.classList.remove('active');
-        if (tab.textContent.includes(mode === 'form' ? 'Form' : 'Nhập tay')) {
-            tab.classList.add('active');
-        }
-    });
-    
-    // Update modes
-    const modes = form.querySelectorAll('.email-mode');
-    modes.forEach(m => {
-        m.classList.remove('active');
-        if (m.dataset.mode === mode) {
-            m.classList.add('active');
-        }
-    });
-}
-
-// Send email manually (without AI generation)
-async function sendManualEmail(formId) {
-    const form = document.getElementById(formId);
-    if (!form) return;
-    
-    const toEmail = form.querySelector('input[name="manual_to_email"]').value;
-    const subject = form.querySelector('input[name="manual_subject"]').value;
-    const body = form.querySelector('textarea[name="manual_body"]').value;
-    
-    if (!toEmail || !subject || !body) {
-        showNotification('error', 'Vui lòng điền đầy đủ thông tin email');
-        return;
-    }
-    
-    // Confirm before sending
-    if (!confirm(`Bạn có chắc muốn gửi email đến ${toEmail}?`)) {
-        return;
-    }
-    
-    // Show loading
-    const submitBtn = form.querySelector('.email-mode-manual .btn-primary');
-    const originalHTML = submitBtn.innerHTML;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
-    submitBtn.disabled = true;
-    
-    try {
-        const response = await fetch('/api/email/send', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                to_email: toEmail,
-                to_name: '',
-                subject: subject,
-                body: body,
-                purpose: 'Manual email',
-                tone: 'formal',
-                language: 'vi'
-            })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            // Replace form with success message
-            form.innerHTML = `
-                <div class="email-sent-success">
-                    <i class="fas fa-check-circle"></i>
-                    <h4>Email đã gửi thành công!</h4>
-                    <p>Đến: ${escapeHtml(toEmail)}</p>
-                    <p>Chủ đề: ${escapeHtml(subject)}</p>
-                </div>
-            `;
-            
-            showNotification('success', 'Email đã được gửi thành công!');
-            addChatMessage(`✅ Đã gửi email thành công đến **${toEmail}**!`, 'bot');
-            loadQuickStats();
-        } else {
-            showNotification('error', data.message || 'Không thể gửi email');
-            submitBtn.innerHTML = originalHTML;
-            submitBtn.disabled = false;
-        }
-    } catch (error) {
-        console.error('Error sending manual email:', error);
-        showNotification('error', 'Lỗi kết nối, vui lòng thử lại');
-        submitBtn.innerHTML = originalHTML;
-        submitBtn.disabled = false;
-    }
+    // No longer used - form only mode now
 }
 
 // Check email configuration before showing email form
@@ -6091,11 +6174,8 @@ async function checkEmailConfigAndShowForm(emailData = null) {
 
 // Expose email functions to global scope for inline onclick
 window.generateEmailPreview = generateEmailPreview;
-window.editEmailPreview = editEmailPreview;
-window.saveEmailEdit = saveEmailEdit;
+window.confirmAndSendEmail = confirmAndSendEmail;
 window.sendEmailFromChat = sendEmailFromChat;
-window.switchEmailTab = switchEmailTab;
-window.sendManualEmail = sendManualEmail;
 window.checkEmailConfigAndShowForm = checkEmailConfigAndShowForm;
 
 function formatChatContent(content) {

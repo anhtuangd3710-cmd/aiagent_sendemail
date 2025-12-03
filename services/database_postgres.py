@@ -935,17 +935,25 @@ class DatabaseServicePostgres:
             VALUES (%s, %s)
         """, (user_id, title))
     
-    def get_chat_sessions(self, user_id: int) -> List[Dict]:
-        """Get all chat sessions for a user"""
+    def get_chat_sessions(self, user_id: int, limit: int = None, offset: int = 0) -> List[Dict]:
+        """Get all chat sessions for a user with optional pagination"""
         self._ensure_chat_tables()
-        return self.query_raw("""
+        
+        sql = """
             SELECT cs.*, 
                    (SELECT COUNT(*) FROM chat_messages WHERE session_id = cs.id) as message_count,
                    (SELECT content FROM chat_messages WHERE session_id = cs.id ORDER BY created_at DESC LIMIT 1) as last_message
             FROM chat_sessions cs
             WHERE cs.user_id = %s AND cs.is_active = TRUE
             ORDER BY cs.updated_at DESC
-        """, (user_id,)) or []
+        """
+        params = [user_id]
+        
+        if limit:
+            sql += " LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+        
+        return self.query_raw(sql, tuple(params)) or []
     
     def get_chat_session(self, session_id: int, user_id: int) -> Optional[Dict]:
         """Get a specific chat session"""
