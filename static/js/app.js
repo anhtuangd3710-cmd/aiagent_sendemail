@@ -5885,8 +5885,8 @@ function addEmailFormMessage(emailData = null, emailConfigured = true) {
                         <li>📧 Email gửi (Gmail, Outlook...)</li>
                         <li>🔐 App Password</li>
                     </ul>
-                    <button class="btn btn-primary" onclick="navigateTo('settings')">
-                        <i class="fas fa-cog"></i> Đi đến Cài đặt
+                    <button class="btn btn-primary" onclick="navigateTo('profile')">
+                        <i class="fas fa-user-cog"></i> Đi đến Hồ sơ & API Keys
                     </button>
                 </div>
             </div>
