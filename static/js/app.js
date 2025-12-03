@@ -5891,6 +5891,12 @@ async function sendEmailFromChat(event, formId) {
     }
 }
 
+// Expose email functions to global scope for inline onclick
+window.generateEmailPreview = generateEmailPreview;
+window.editEmailPreview = editEmailPreview;
+window.saveEmailEdit = saveEmailEdit;
+window.sendEmailFromChat = sendEmailFromChat;
+
 function formatChatContent(content) {
     // Convert markdown-like formatting to HTML
     let formatted = content
