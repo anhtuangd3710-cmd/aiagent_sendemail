@@ -6742,6 +6742,73 @@ select:focus-visible {
     text-align: right;
 }
 
+/* Inline Chart Message */
+.chat-message.chart-message {
+    max-width: 95%;
+}
+
+.chat-message.chart-message .message-avatar {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+}
+
+.chat-message .chart-content {
+    background: white;
+    border-radius: 16px;
+    padding: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    min-width: 280px;
+    max-width: 100%;
+}
+
+.chart-title-inline {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chart-title-inline::before {
+    content: '📊';
+}
+
+.inline-chart-wrapper {
+    position: relative;
+    width: 100%;
+    height: 250px;
+    margin-bottom: 10px;
+}
+
+.inline-chart-wrapper canvas {
+    width: 100% !important;
+    height: 100% !important;
+}
+
+/* Responsive inline chart */
+@media (max-width: 576px) {
+    .chat-message.chart-message {
+        max-width: 100%;
+    }
+    
+    .chat-message .chart-content {
+        padding: 12px;
+        min-width: auto;
+    }
+    
+    .inline-chart-wrapper {
+        height: 200px;
+    }
+    
+    .chart-title-inline {
+        font-size: 13px;
+    }
+}
+
 /* Export Options in Chat */
 .export-options {
     display: flex;

@@ -5221,9 +5221,9 @@ async function sendChatMessage() {
             // Add bot response
             addChatMessage(data.message, 'bot');
             
-            // Show chart if available
+            // Show chart inline in chat if available
             if (data.show_chart && data.chart_data) {
-                renderChart(data.chart_data);
+                addChartMessage(data.chart_data);
             }
             
             // Show export options if user wants to export
@@ -5280,6 +5280,163 @@ function removeChatMessage(messageId) {
     const message = document.getElementById(messageId);
     if (message) {
         message.remove();
+    }
+}
+
+// Counter for unique chart IDs
+let chartCounter = 0;
+// Store inline charts
+const inlineCharts = new Map();
+
+function addChartMessage(chartData) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return null;
+    
+    chartCounter++;
+    const messageId = 'chart-msg-' + Date.now();
+    const canvasId = 'inline-chart-' + chartCounter;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message bot chart-message';
+    messageDiv.id = messageId;
+    
+    // Handle overview type - pick the best chart
+    let actualChartData = chartData;
+    if (chartData.type === 'overview') {
+        if (chartData.email_stats) {
+            actualChartData = chartData.email_stats;
+        } else if (chartData.sentiment_stats) {
+            actualChartData = chartData.sentiment_stats;
+        } else if (chartData.cv_stats) {
+            actualChartData = chartData.cv_stats;
+        }
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar"><i class="fas fa-chart-pie"></i></div>
+        <div class="message-content chart-content">
+            <div class="chart-title-inline">${actualChartData.title || 'Biểu đồ'}</div>
+            <div class="inline-chart-wrapper">
+                <canvas id="${canvasId}"></canvas>
+            </div>
+            <div class="message-time">${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
+    
+    // Render chart after DOM is updated
+    setTimeout(() => {
+        renderInlineChart(canvasId, actualChartData);
+    }, 100);
+    
+    return messageId;
+}
+
+function renderInlineChart(canvasId, chartData) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) {
+        console.error('Canvas not found:', canvasId);
+        return;
+    }
+    
+    const ctx = canvas.getContext('2d');
+    
+    // Build chart data
+    let data;
+    if (chartData.datasets) {
+        data = {
+            labels: chartData.labels || [],
+            datasets: chartData.datasets
+        };
+    } else if (chartData.data) {
+        data = {
+            labels: chartData.labels || [],
+            datasets: [{
+                data: chartData.data,
+                backgroundColor: chartData.colors || ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'],
+                borderWidth: 2,
+                borderColor: '#ffffff'
+            }]
+        };
+    } else {
+        console.error('Invalid chart data format:', chartData);
+        return;
+    }
+    
+    // Chart options
+    const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: {
+                    padding: 15,
+                    font: { size: 11 },
+                    usePointStyle: true,
+                    boxWidth: 8
+                }
+            },
+            title: {
+                display: false // Title shown in header
+            }
+        },
+        animation: {
+            duration: 600,
+            easing: 'easeOutQuart'
+        }
+    };
+    
+    // Scale options for bar/line charts
+    if (chartData.type === 'bar' || chartData.type === 'line') {
+        options.scales = {
+            y: {
+                beginAtZero: true,
+                ticks: { stepSize: 1, font: { size: 10 } },
+                grid: { color: 'rgba(0, 0, 0, 0.05)' }
+            },
+            x: {
+                grid: { display: false },
+                ticks: { font: { size: 10 } }
+            }
+        };
+    }
+    
+    // Radar chart options
+    if (chartData.type === 'radar') {
+        options.scales = {
+            r: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { stepSize: 20, font: { size: 9 } },
+                pointLabels: { font: { size: 10 } }
+            }
+        };
+    }
+    
+    // PolarArea options
+    if (chartData.type === 'polarArea') {
+        options.scales = {
+            r: { beginAtZero: true }
+        };
+    }
+    
+    // Create chart
+    const chart = new Chart(ctx, {
+        type: chartData.type || 'doughnut',
+        data: data,
+        options: options
+    });
+    
+    // Store chart reference
+    inlineCharts.set(canvasId, chart);
+    
+    // Scroll to show chart
+    const container = document.getElementById('chatbot-messages');
+    if (container) {
+        container.scrollTop = container.scrollHeight;
     }
 }
 
