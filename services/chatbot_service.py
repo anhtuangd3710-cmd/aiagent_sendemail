@@ -682,8 +682,12 @@ Tôi có thể giúp gì thêm cho bạn?"""
         """Determine the appropriate chart type based on query"""
         query_lower = query.lower()
         
+        # User statistics (admin only)
+        if any(word in query_lower for word in ['user', 'người dùng', 'tài khoản', 'account', 'member', 'thành viên']):
+            return 'user_stats'
+        
         # Pie chart keywords
-        if any(word in query_lower for word in ['pie', 'tròn', 'cảm xúc', 'sentiment', 'phần trăm']):
+        elif any(word in query_lower for word in ['pie', 'tròn', 'cảm xúc', 'sentiment', 'phần trăm']):
             return 'pie'
         
         # Bar chart keywords
@@ -1038,6 +1042,31 @@ Tôi có thể giúp gì thêm cho bạn?"""
                 'data': [cv_stats.get('qualified', 0), cv_stats.get('not_qualified', 0)],
                 'colors': ['#10b981', '#ef4444']
             }
+        
+        elif chart_type == 'user_stats':
+            # User statistics (admin only)
+            if is_admin:
+                user_stats = self._get_user_statistics_admin()
+                return {
+                    'type': 'doughnut',
+                    'title': '👥 Thống kê người dùng hệ thống',
+                    'labels': ['Admin 👑', 'User thường 👤', 'Không hoạt động ⏸️'],
+                    'data': [
+                        user_stats.get('admin_count', 0),
+                        user_stats.get('user_count', 0),
+                        user_stats.get('total_users', 0) - user_stats.get('active_users', 0)
+                    ],
+                    'colors': ['#8b5cf6', '#6366f1', '#94a3b8']
+                }
+            else:
+                # Non-admin users can't see user stats
+                return {
+                    'type': 'doughnut',
+                    'title': '⚠️ Không có quyền xem',
+                    'labels': ['Bạn cần quyền Admin để xem thống kê người dùng'],
+                    'data': [1],
+                    'colors': ['#94a3b8']
+                }
         
         elif chart_type == 'radar':
             # Overall performance radar
