@@ -56,8 +56,9 @@ class ChatbotService:
             return []
     
     def _get_user_statistics_admin(self) -> Dict:
-        """Get user statistics (admin only)"""
+        """Get comprehensive user statistics (admin only)"""
         try:
+            # Get basic user info
             users = self.database.query_raw(
                 """SELECT id, username, email, full_name, role, is_active, 
                           created_at, last_login 
@@ -68,12 +69,62 @@ class ChatbotService:
             active_users = sum(1 for u in users if u.get('is_active')) if users else 0
             admin_count = sum(1 for u in users if u.get('role') == 'admin') if users else 0
             
+            # Get activity stats per user
+            user_activity = self.database.query_raw(
+                """SELECT u.id, u.username, u.email, u.full_name, u.role,
+                          COALESCE(e.email_count, 0) as email_count,
+                          COALESCE(e.responded_count, 0) as responded_count,
+                          COALESCE(c.cv_count, 0) as cv_count,
+                          COALESCE(c.qualified_count, 0) as qualified_count,
+                          u.last_login, u.created_at
+                   FROM users u
+                   LEFT JOIN (
+                       SELECT user_id, 
+                              COUNT(*) as email_count,
+                              SUM(CASE WHEN response_received THEN 1 ELSE 0 END) as responded_count
+                       FROM sent_emails 
+                       GROUP BY user_id
+                   ) e ON u.id = e.user_id
+                   LEFT JOIN (
+                       SELECT user_id,
+                              COUNT(*) as cv_count,
+                              SUM(CASE WHEN is_qualified THEN 1 ELSE 0 END) as qualified_count
+                       FROM cv_evaluations
+                       GROUP BY user_id
+                   ) c ON u.id = c.user_id
+                   ORDER BY (COALESCE(e.email_count, 0) + COALESCE(c.cv_count, 0)) DESC"""
+            ) or []
+            
+            # Top active users (by total activity)
+            top_active_users = []
+            for u in user_activity[:10]:
+                top_active_users.append({
+                    'id': u.get('id'),
+                    'name': u.get('full_name') or u.get('username') or u.get('email', '').split('@')[0],
+                    'email': u.get('email'),
+                    'role': u.get('role'),
+                    'email_count': u.get('email_count', 0),
+                    'responded_count': u.get('responded_count', 0),
+                    'cv_count': u.get('cv_count', 0),
+                    'qualified_count': u.get('qualified_count', 0),
+                    'total_activity': (u.get('email_count', 0) or 0) + (u.get('cv_count', 0) or 0),
+                    'last_login': str(u.get('last_login', ''))[:19] if u.get('last_login') else 'Chưa đăng nhập'
+                })
+            
+            # Calculate totals
+            total_emails_all = sum(u.get('email_count', 0) or 0 for u in user_activity)
+            total_cv_all = sum(u.get('cv_count', 0) or 0 for u in user_activity)
+            
             return {
                 'total_users': total_users,
                 'active_users': active_users,
                 'admin_count': admin_count,
                 'user_count': total_users - admin_count,
-                'users_list': users[:10] if users else []  # Top 10 recent users
+                'inactive_count': total_users - active_users,
+                'total_emails_all': total_emails_all,
+                'total_cv_all': total_cv_all,
+                'top_active_users': top_active_users,
+                'users_list': users[:10] if users else []
             }
         except Exception as e:
             logger.error(f"Error getting user statistics: {e}")
@@ -504,12 +555,25 @@ class ChatbotService:
             # Build context for AI
             admin_context = ""
             if is_admin and user_stats:
+                top_users = user_stats.get('top_active_users', [])[:5]
+                top_users_text = ""
+                for i, u in enumerate(top_users, 1):
+                    top_users_text += f"  {i}. {u.get('name')} ({u.get('role')}): {u.get('email_count', 0)} email, {u.get('cv_count', 0)} CV\n"
+                
                 admin_context = f"""
-=== THỐNG KÊ NGƯỜI DÙNG (CHỈ ADMIN) ===
+=== THỐNG KÊ NGƯỜI DÙNG HỆ THỐNG (CHỈ ADMIN) ===
 - Tổng số người dùng: {user_stats.get('total_users', 0)}
 - Người dùng đang hoạt động: {user_stats.get('active_users', 0)}
+- Người dùng không hoạt động: {user_stats.get('inactive_count', 0)}
 - Số admin: {user_stats.get('admin_count', 0)}
 - Số user thường: {user_stats.get('user_count', 0)}
+
+📊 TỔNG HOẠT ĐỘNG HỆ THỐNG:
+- Tổng email đã gửi (tất cả user): {user_stats.get('total_emails_all', 0)}
+- Tổng CV đã đánh giá (tất cả user): {user_stats.get('total_cv_all', 0)}
+
+🏆 TOP NGƯỜI DÙNG HOẠT ĐỘNG NHIỀU NHẤT:
+{top_users_text if top_users_text else '  Chưa có dữ liệu hoạt động'}
 
 ⚠️ LƯU Ý: Bạn đang xem dữ liệu TOÀN BỘ HỆ THỐNG với quyền Admin.
 """
@@ -577,34 +641,64 @@ Phân bố điểm CV:
 - Nếu hỏi về biểu đồ/xuất file: Đề cập bạn có thể hỗ trợ
 - Sử dụng emoji để làm nổi bật thông tin quan trọng
 - Định dạng với bullet points cho dễ đọc
+
+=== QUAN TRỌNG: PHÂN TÍCH Ý ĐỊNH ===
+Sau khi trả lời, hãy thêm một dòng ở cuối response với format:
+[INTENT: chart_type=<loại_chart_hoặc_none>, show_chart=<true/false>, show_export=<true/false>]
+
+Trong đó chart_type có thể là:
+- "pie" (biểu đồ tròn): cho cảm xúc, phần trăm, tỷ lệ
+- "bar" (biểu đồ cột): cho so sánh, top người nhận, hoạt động user
+- "line" (biểu đồ đường): cho xu hướng theo thời gian
+- "doughnut" (biểu đồ vòng): cho trạng thái email (đã phản hồi/chờ)
+- "radar" (biểu đồ radar): cho tổng quan hiệu suất
+- "polarArea": cho phân tích quyết định
+- "cv" (biểu đồ CV): cho phân bố điểm CV
+- "cv_qualified": cho tỷ lệ ứng viên đạt
+- "user_stats": cho phân bổ người dùng (admin)
+- "user_activity": cho hoạt động chi tiết của users (admin)
+- "none": không cần biểu đồ
+
+Hãy THÔNG MINH để quyết định có nên hiện biểu đồ hay không dựa trên:
+- Người dùng có HỎI về số liệu, thống kê, so sánh không?
+- Câu hỏi có liên quan đến data visualization không?
+- Người dùng có đề cập đến biểu đồ, chart, vẽ, xem không?
+- Nội dung có phù hợp để visualize không?
+
+Ví dụ:
+- "Cho tôi xem thống kê email" → [INTENT: chart_type=doughnut, show_chart=true, show_export=false]
+- "Ai gửi email nhiều nhất?" → [INTENT: chart_type=user_activity, show_chart=true, show_export=false]
+- "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false]
+- "Xuất dữ liệu ra Excel" → [INTENT: chart_type=none, show_chart=false, show_export=true]
+- "So sánh tỷ lệ phản hồi" → [INTENT: chart_type=pie, show_chart=true, show_export=false]
 """
             
-            # Determine if user wants a chart or export
-            query_lower = query.lower()
-            wants_chart = any(word in query_lower for word in ['biểu đồ', 'chart', 'vẽ', 'đồ thị', 'graph', 'visual', 'thống kê'])
-            wants_export = any(word in query_lower for word in ['excel', 'xuất', 'export', 'download', 'tải'])
-            
-            # Determine chart type and get chart data if needed
-            chart_type = self._determine_chart_type(query_lower)
-            chart_data = None
-            if wants_chart:
-                chart_data = self.get_chart_data(user_id, chart_type, is_admin=is_admin)
-            
-            # Generate AI response
+            # Generate AI response with intent analysis
             ai_response = self._generate_ai_response(context, user_settings)
+            
+            # Parse intent from AI response
+            intent = self._parse_ai_intent(ai_response)
+            
+            # Clean the response (remove intent line)
+            clean_response = self._clean_response(ai_response)
+            
+            # Get chart data if AI decided to show chart
+            chart_data = None
+            if intent['show_chart'] and intent['chart_type'] != 'none':
+                chart_data = self.get_chart_data(user_id, intent['chart_type'], is_admin=is_admin)
             
             response = {
                 'success': True,
-                'message': ai_response,
+                'message': clean_response,
                 'data': {
                     'email_stats': email_stats,
                     'cv_stats': cv_stats,
                     'user_stats': user_stats if is_admin else None
                 },
                 'is_admin': is_admin,
-                'show_chart': wants_chart,
-                'show_export': wants_export,
-                'chart_type': chart_type,
+                'show_chart': intent['show_chart'],
+                'show_export': intent['show_export'],
+                'chart_type': intent['chart_type'],
                 'chart_data': chart_data,
                 'session_id': session_id,
                 'timestamp': datetime.now().isoformat()
@@ -612,9 +706,9 @@ Phân bố điểm CV:
             
             # Save bot response
             self.database.save_chat_message(
-                session_id, user_id, 'bot', ai_response,
-                has_chart=wants_chart, chart_type=chart_type,
-                chart_data=chart_data, has_export=wants_export
+                session_id, user_id, 'bot', clean_response,
+                has_chart=intent['show_chart'], chart_type=intent['chart_type'],
+                chart_data=chart_data, has_export=intent['show_export']
             )
             
             # Update session title if this is the first message
@@ -629,6 +723,42 @@ Phân bố điểm CV:
                 'message': f'Xin lỗi, đã có lỗi xảy ra: {str(e)}',
                 'data': {}
             }
+    
+    def _parse_ai_intent(self, response: str) -> Dict:
+        """Parse AI intent from response"""
+        import re
+        
+        default_intent = {
+            'chart_type': 'none',
+            'show_chart': False,
+            'show_export': False
+        }
+        
+        try:
+            # Find intent line
+            intent_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\]]+)\]', response)
+            
+            if intent_match:
+                chart_type = intent_match.group(1).strip().lower()
+                show_chart = intent_match.group(2).strip().lower() == 'true'
+                show_export = intent_match.group(3).strip().lower() == 'true'
+                
+                return {
+                    'chart_type': chart_type if chart_type != 'none' else 'none',
+                    'show_chart': show_chart,
+                    'show_export': show_export
+                }
+        except Exception as e:
+            logger.error(f"Error parsing AI intent: {e}")
+        
+        return default_intent
+    
+    def _clean_response(self, response: str) -> str:
+        """Remove intent line from response"""
+        import re
+        # Remove the intent line
+        cleaned = re.sub(r'\n?\[INTENT:[^\]]+\]', '', response)
+        return cleaned.strip()
     
     def _generate_ai_response(self, context: str, user_settings: Dict = None) -> str:
         """Generate AI response for the query"""
@@ -682,8 +812,13 @@ Tôi có thể giúp gì thêm cho bạn?"""
         """Determine the appropriate chart type based on query"""
         query_lower = query.lower()
         
-        # User statistics (admin only)
-        if any(word in query_lower for word in ['user', 'người dùng', 'tài khoản', 'account', 'member', 'thành viên']):
+        # User activity chart (admin) - more specific, check first
+        if any(word in query_lower for word in ['hoạt động user', 'hoạt động người dùng', 'ai gửi', 'ai đánh giá', 
+                                                  'top user', 'user nào', 'người dùng nào', 'activity']):
+            return 'user_activity'
+        
+        # User statistics (admin only) - general user stats
+        elif any(word in query_lower for word in ['user', 'người dùng', 'tài khoản', 'account', 'member', 'thành viên']):
             return 'user_stats'
         
         # Pie chart keywords
@@ -1044,28 +1179,72 @@ Tôi có thể giúp gì thêm cho bạn?"""
             }
         
         elif chart_type == 'user_stats':
-            # User statistics (admin only)
+            # User statistics (admin only) - overview
             if is_admin:
                 user_stats = self._get_user_statistics_admin()
                 return {
                     'type': 'doughnut',
-                    'title': '👥 Thống kê người dùng hệ thống',
-                    'labels': ['Admin 👑', 'User thường 👤', 'Không hoạt động ⏸️'],
+                    'title': '👥 Phân bổ người dùng hệ thống',
+                    'labels': ['Admin 👑', 'User hoạt động 👤', 'User không hoạt động ⏸️'],
                     'data': [
                         user_stats.get('admin_count', 0),
-                        user_stats.get('user_count', 0),
-                        user_stats.get('total_users', 0) - user_stats.get('active_users', 0)
+                        user_stats.get('active_users', 0) - user_stats.get('admin_count', 0),
+                        user_stats.get('inactive_count', 0)
                     ],
-                    'colors': ['#8b5cf6', '#6366f1', '#94a3b8']
+                    'colors': ['#8b5cf6', '#10b981', '#94a3b8']
                 }
             else:
-                # Non-admin users can't see user stats
                 return {
                     'type': 'doughnut',
                     'title': '⚠️ Không có quyền xem',
                     'labels': ['Bạn cần quyền Admin để xem thống kê người dùng'],
                     'data': [1],
                     'colors': ['#94a3b8']
+                }
+        
+        elif chart_type == 'user_activity':
+            # User activity breakdown (admin only)
+            if is_admin:
+                user_stats = self._get_user_statistics_admin()
+                top_users = user_stats.get('top_active_users', [])[:7]
+                
+                if not top_users:
+                    return {
+                        'type': 'bar',
+                        'title': '📊 Hoạt động người dùng',
+                        'labels': ['Chưa có dữ liệu'],
+                        'datasets': [{'label': 'Hoạt động', 'data': [0], 'backgroundColor': '#94a3b8'}]
+                    }
+                
+                return {
+                    'type': 'bar',
+                    'title': '📊 Top hoạt động người dùng',
+                    'labels': [u.get('name', 'User')[:15] for u in top_users],
+                    'datasets': [
+                        {
+                            'label': 'Email đã gửi',
+                            'data': [u.get('email_count', 0) for u in top_users],
+                            'backgroundColor': 'rgba(99, 102, 241, 0.8)',
+                            'borderColor': '#6366f1',
+                            'borderWidth': 2,
+                            'borderRadius': 6
+                        },
+                        {
+                            'label': 'CV đã đánh giá',
+                            'data': [u.get('cv_count', 0) for u in top_users],
+                            'backgroundColor': 'rgba(16, 185, 129, 0.8)',
+                            'borderColor': '#10b981',
+                            'borderWidth': 2,
+                            'borderRadius': 6
+                        }
+                    ]
+                }
+            else:
+                return {
+                    'type': 'bar',
+                    'title': '⚠️ Không có quyền xem',
+                    'labels': ['Admin only'],
+                    'datasets': [{'label': '', 'data': [0], 'backgroundColor': '#94a3b8'}]
                 }
         
         elif chart_type == 'radar':
