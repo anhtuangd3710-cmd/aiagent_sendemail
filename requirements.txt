@@ -1,4 +1,5 @@
 # Python dependencies for Email AI Agent
+# Last updated: 2024-12-03 - Force rebuild for openpyxl
 
 # ===========================================
 # AI Providers (choose one or both)
