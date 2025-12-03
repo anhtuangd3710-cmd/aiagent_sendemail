@@ -7270,15 +7270,15 @@ select:focus-visible {
     /* Sessions sidebar becomes toggleable on tablet */
     .chat-sessions-sidebar {
         position: fixed;
-        top: 0;
+        top: var(--header-height);
         left: -300px;
         width: 280px;
-        height: 100vh;
+        height: calc(100vh - var(--header-height));
         z-index: 1001;
         border-radius: 0;
         transition: left 0.3s ease;
         box-shadow: 4px 0 20px rgba(0, 0, 0, 0.15);
-        padding-top: 0;
+        background: var(--bg-card);
     }
     
     .chat-sessions-sidebar.mobile-open {
@@ -7288,7 +7288,7 @@ select:focus-visible {
     /* Add overlay when sidebar open */
     .sessions-overlay {
         position: fixed;
-        top: 0;
+        top: var(--header-height);
         left: 0;
         right: 0;
         bottom: 0;
