@@ -4911,6 +4911,47 @@ function initChatbot() {
     if (closeChartBtn) {
         closeChartBtn.addEventListener('click', hideChart);
     }
+    
+    // Setup mobile sessions toggle
+    setupMobileSessionsToggle();
+}
+
+// Mobile Sessions Sidebar Toggle
+function setupMobileSessionsToggle() {
+    const toggleBtn = document.getElementById('mobile-sessions-toggle');
+    const sidebar = document.querySelector('.chat-sessions-sidebar');
+    const overlay = document.getElementById('sessions-overlay');
+    
+    if (toggleBtn && sidebar) {
+        toggleBtn.addEventListener('click', () => {
+            sidebar.classList.toggle('mobile-open');
+            if (overlay) {
+                overlay.classList.toggle('active');
+            }
+        });
+    }
+    
+    // Close sidebar when clicking overlay
+    if (overlay) {
+        overlay.addEventListener('click', () => {
+            if (sidebar) {
+                sidebar.classList.remove('mobile-open');
+            }
+            overlay.classList.remove('active');
+        });
+    }
+    
+    // Close sidebar when selecting a session on mobile
+    window.closeMobileSidebar = function() {
+        if (window.innerWidth < 1024) {
+            if (sidebar) {
+                sidebar.classList.remove('mobile-open');
+            }
+            if (overlay) {
+                overlay.classList.remove('active');
+            }
+        }
+    };
 }
 
 // Chat Session Management
@@ -4993,6 +5034,11 @@ async function selectSession(sessionId) {
     
     // Load messages
     await loadSessionMessages(sessionId);
+    
+    // Close mobile sidebar after selecting
+    if (typeof closeMobileSidebar === 'function') {
+        closeMobileSidebar();
+    }
 }
 
 async function loadSessionMessages(sessionId) {
