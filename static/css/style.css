@@ -6288,10 +6288,181 @@ select:focus-visible {
 
 .chatbot-container {
     display: grid;
-    grid-template-columns: 1fr 320px;
+    grid-template-columns: 280px 1fr;
     gap: 20px;
     height: calc(100vh - var(--header-height) - 60px);
     padding: 0;
+}
+
+.chatbot-container.chatbot-fullwidth .chatbot-main {
+    max-width: 100%;
+}
+
+/* Chat Sessions Sidebar */
+.chat-sessions-sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card);
+    border-radius: var(--border-radius-lg);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+}
+
+.sessions-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    color: white;
+}
+
+.sessions-header h4 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sessions-header .btn-icon {
+    background: rgba(255, 255, 255, 0.15);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    transition: all 0.2s ease;
+}
+
+.sessions-header .btn-icon:hover {
+    background: rgba(255, 255, 255, 0.25);
+    transform: scale(1.05);
+}
+
+.sessions-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+}
+
+.session-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-bottom: 8px;
+    position: relative;
+}
+
+.session-item:hover {
+    background: var(--bg-secondary);
+}
+
+.session-item.active {
+    background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+    color: white;
+}
+
+.session-item.active .session-time {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.session-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--bg-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-color);
+    flex-shrink: 0;
+}
+
+.session-item.active .session-icon {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+}
+
+.session-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.session-title {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-time {
+    display: block;
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.session-delete-btn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: rgba(239, 68, 68, 0.1);
+    border: none;
+    color: #ef4444;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.session-item:hover .session-delete-btn {
+    display: flex;
+}
+
+.session-delete-btn:hover {
+    background: #ef4444;
+    color: white;
+}
+
+.sessions-footer {
+    padding: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.sessions-footer .btn {
+    width: 100%;
+    font-size: 12px;
+}
+
+/* No Sessions State */
+.no-sessions {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-secondary);
+}
+
+.no-sessions i {
+    font-size: 48px;
+    color: var(--border-color);
+    margin-bottom: 16px;
+}
+
+.no-sessions p {
+    font-size: 13px;
+    margin: 0;
 }
 
 .chatbot-main {
@@ -7025,15 +7196,20 @@ select:focus-visible {
 }
 
 /* Chatbot Responsive */
+@media (max-width: 1200px) {
+    .chatbot-container {
+        grid-template-columns: 250px 1fr;
+    }
+}
+
 @media (max-width: 1024px) {
     .chatbot-container {
         grid-template-columns: 1fr;
         height: auto;
     }
     
-    .chatbot-sidebar {
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
+    .chat-sessions-sidebar {
+        display: none;
     }
     
     .chatbot-main {
@@ -7042,10 +7218,6 @@ select:focus-visible {
 }
 
 @media (max-width: 768px) {
-    .chatbot-sidebar {
-        grid-template-columns: 1fr;
-    }
-    
     .chat-suggestions {
         flex-wrap: nowrap;
         overflow-x: auto;
@@ -7061,3 +7233,4 @@ select:focus-visible {
         max-width: 90%;
     }
 }
+

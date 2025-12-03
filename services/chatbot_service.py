@@ -440,9 +440,17 @@ class ChatbotService:
         query_lower = query.lower()
         return any(keyword in query_lower for keyword in guide_keywords)
 
-    def process_query(self, user_id: int, query: str, user_settings: Dict = None, is_admin: bool = False) -> Dict:
+    def process_query(self, user_id: int, query: str, user_settings: Dict = None, 
+                       is_admin: bool = False, session_id: int = None) -> Dict:
         """Process user query and return appropriate response with data"""
         try:
+            # Get or create session
+            if session_id is None:
+                session_id = self.database.get_or_create_active_session(user_id)
+            
+            # Save user message
+            self.database.save_chat_message(session_id, user_id, 'user', query)
+            
             # Check if this is a guide/help query
             is_guide_query = self._is_guide_query(query)
             
@@ -552,8 +560,19 @@ Phân bố điểm CV:
                 'show_export': wants_export,
                 'chart_type': chart_type,
                 'chart_data': chart_data,
+                'session_id': session_id,
                 'timestamp': datetime.now().isoformat()
             }
+            
+            # Save bot response
+            self.database.save_chat_message(
+                session_id, user_id, 'bot', ai_response,
+                has_chart=wants_chart, chart_type=chart_type,
+                chart_data=chart_data, has_export=wants_export
+            )
+            
+            # Update session title if this is the first message
+            self.database.generate_session_title(session_id, user_id)
             
             return response
             
@@ -615,16 +634,42 @@ Tôi có thể giúp gì thêm cho bạn?"""
     
     def _determine_chart_type(self, query: str) -> str:
         """Determine the appropriate chart type based on query"""
-        if 'pie' in query or 'tròn' in query or 'cảm xúc' in query or 'sentiment' in query:
+        query_lower = query.lower()
+        
+        # Pie chart keywords
+        if any(word in query_lower for word in ['pie', 'tròn', 'cảm xúc', 'sentiment', 'phần trăm']):
             return 'pie'
-        elif 'bar' in query or 'cột' in query or 'người nhận' in query or 'recipient' in query:
+        
+        # Bar chart keywords
+        elif any(word in query_lower for word in ['bar', 'cột', 'người nhận', 'recipient', 'top']):
             return 'bar'
-        elif 'line' in query or 'đường' in query or 'xu hướng' in query or 'trend' in query or 'theo ngày' in query:
+        
+        # Line chart keywords
+        elif any(word in query_lower for word in ['line', 'đường', 'xu hướng', 'trend', 'theo ngày', 'thời gian']):
             return 'line'
-        elif 'cv' in query or 'ứng viên' in query:
-            return 'bar'
+        
+        # Doughnut chart keywords
+        elif any(word in query_lower for word in ['doughnut', 'donut', 'trạng thái', 'status']):
+            return 'doughnut'
+        
+        # CV related charts
+        elif any(word in query_lower for word in ['cv', 'ứng viên', 'điểm cv', 'phân bố điểm']):
+            return 'cv'
+        
+        # CV qualification
+        elif any(word in query_lower for word in ['đạt yêu cầu', 'qualified', 'tỷ lệ đạt']):
+            return 'cv_qualified'
+        
+        # Decision analysis
+        elif any(word in query_lower for word in ['quyết định', 'decision', 'đồng ý', 'từ chối']):
+            return 'decision'
+        
+        # Radar/performance chart
+        elif any(word in query_lower for word in ['radar', 'hiệu suất', 'performance', 'tổng quan hiệu suất']):
+            return 'radar'
+        
         else:
-            return 'overview'  # Default to overview with multiple charts
+            return 'overview'  # Default to doughnut overview
     
     def generate_excel_data(self, user_id: int, data_type: str = 'all', is_admin: bool = False) -> bytes:
         """Generate Excel file with email/CV data (all data if admin)"""
@@ -812,8 +857,8 @@ Tôi có thể giúp gì thêm cho bạn?"""
             # Sentiment pie chart
             return {
                 'type': 'pie',
-                'title': 'Phân tích cảm xúc phản hồi',
-                'labels': ['Tích cực', 'Tiêu cực', 'Trung tính'],
+                'title': '🎯 Phân tích cảm xúc phản hồi',
+                'labels': ['Tích cực 😊', 'Tiêu cực 😞', 'Trung tính 😐'],
                 'data': [
                     email_stats.get('sentiments', {}).get('positive', 0),
                     email_stats.get('sentiments', {}).get('negative', 0),
@@ -827,18 +872,24 @@ Tôi có thể giúp gì thêm cho bạn?"""
             top_recipients = email_stats.get('top_recipients', [])
             return {
                 'type': 'bar',
-                'title': 'Top người nhận email',
+                'title': '📊 Top người nhận email nhiều nhất',
                 'labels': [r.get('name', r.get('email', ''))[:20] for r in top_recipients],
                 'datasets': [
                     {
-                        'label': 'Số email đã gửi',
+                        'label': 'Email đã gửi',
                         'data': [r.get('count', 0) for r in top_recipients],
-                        'backgroundColor': '#3b82f6'
+                        'backgroundColor': 'rgba(99, 102, 241, 0.8)',
+                        'borderColor': '#6366f1',
+                        'borderWidth': 2,
+                        'borderRadius': 8
                     },
                     {
-                        'label': 'Số phản hồi',
+                        'label': 'Đã phản hồi',
                         'data': [r.get('responded', 0) for r in top_recipients],
-                        'backgroundColor': '#10b981'
+                        'backgroundColor': 'rgba(16, 185, 129, 0.8)',
+                        'borderColor': '#10b981',
+                        'borderWidth': 2,
+                        'borderRadius': 8
                     }
                 ]
             }
@@ -848,22 +899,40 @@ Tôi có thể giúp gì thêm cho bạn?"""
             emails_by_date = email_stats.get('emails_by_date', [])
             return {
                 'type': 'line',
-                'title': 'Số lượng email theo ngày',
-                'labels': [d.get('date', '') for d in emails_by_date[-30:]],  # Last 30 days
+                'title': '📈 Xu hướng email theo thời gian',
+                'labels': [d.get('date', '') for d in emails_by_date[-30:]],
                 'datasets': [
                     {
                         'label': 'Email đã gửi',
                         'data': [d.get('sent', 0) for d in emails_by_date[-30:]],
-                        'borderColor': '#3b82f6',
-                        'fill': False
+                        'borderColor': '#6366f1',
+                        'backgroundColor': 'rgba(99, 102, 241, 0.1)',
+                        'fill': True,
+                        'tension': 0.4,
+                        'pointRadius': 4,
+                        'pointHoverRadius': 6
                     },
                     {
                         'label': 'Phản hồi nhận được',
                         'data': [d.get('responded', 0) for d in emails_by_date[-30:]],
                         'borderColor': '#10b981',
-                        'fill': False
+                        'backgroundColor': 'rgba(16, 185, 129, 0.1)',
+                        'fill': True,
+                        'tension': 0.4,
+                        'pointRadius': 4,
+                        'pointHoverRadius': 6
                     }
                 ]
+            }
+        
+        elif chart_type == 'doughnut':
+            # Email status doughnut
+            return {
+                'type': 'doughnut',
+                'title': '📬 Trạng thái email',
+                'labels': ['Đã phản hồi ✅', 'Chờ phản hồi ⏳'],
+                'data': [email_stats.get('responded', 0), email_stats.get('pending', 0)],
+                'colors': ['#10b981', '#f59e0b']
             }
         
         elif chart_type == 'cv':
@@ -871,41 +940,81 @@ Tôi có thể giúp gì thêm cho bạn?"""
             score_dist = cv_stats.get('score_distribution', {})
             return {
                 'type': 'bar',
-                'title': 'Phân bố điểm CV',
-                'labels': list(score_dist.keys()),
+                'title': '📋 Phân bố điểm đánh giá CV',
+                'labels': list(score_dist.keys()) if score_dist else ['0-40%', '40-60%', '60-80%', '80-100%'],
                 'datasets': [{
                     'label': 'Số lượng CV',
-                    'data': list(score_dist.values()),
-                    'backgroundColor': ['#ef4444', '#f59e0b', '#3b82f6', '#10b981']
+                    'data': list(score_dist.values()) if score_dist else [0, 0, 0, 0],
+                    'backgroundColor': [
+                        'rgba(239, 68, 68, 0.8)',   # Red - low
+                        'rgba(245, 158, 11, 0.8)',  # Orange - medium
+                        'rgba(59, 130, 246, 0.8)',  # Blue - good
+                        'rgba(16, 185, 129, 0.8)'   # Green - excellent
+                    ],
+                    'borderColor': ['#ef4444', '#f59e0b', '#3b82f6', '#10b981'],
+                    'borderWidth': 2,
+                    'borderRadius': 8
                 }]
             }
         
-        else:  # overview
+        elif chart_type == 'decision':
+            # Decision analysis
+            decisions = email_stats.get('decisions', {})
             return {
-                'type': 'overview',
-                'email_stats': {
-                    'type': 'doughnut',
-                    'title': 'Trạng thái email',
-                    'labels': ['Đã phản hồi', 'Chờ phản hồi'],
-                    'data': [email_stats.get('responded', 0), email_stats.get('pending', 0)],
-                    'colors': ['#10b981', '#f59e0b']
-                },
-                'sentiment_stats': {
-                    'type': 'pie',
-                    'title': 'Cảm xúc phản hồi',
-                    'labels': ['Tích cực', 'Tiêu cực', 'Trung tính'],
+                'type': 'polarArea',
+                'title': '🎯 Phân tích quyết định từ phản hồi',
+                'labels': ['Đồng ý ✅', 'Từ chối ❌', 'Chưa quyết định 🤔', 'Cần thêm thông tin ℹ️'],
+                'data': [
+                    decisions.get('agreed', 0),
+                    decisions.get('disagreed', 0),
+                    decisions.get('undecided', 0),
+                    decisions.get('needs_more_info', 0)
+                ],
+                'colors': ['#10b981', '#ef4444', '#f59e0b', '#3b82f6']
+            }
+        
+        elif chart_type == 'cv_qualified':
+            # CV qualification pie
+            return {
+                'type': 'pie',
+                'title': '👥 Tỷ lệ ứng viên đạt yêu cầu',
+                'labels': ['Đạt yêu cầu (≥85%) ✅', 'Chưa đạt ❌'],
+                'data': [cv_stats.get('qualified', 0), cv_stats.get('not_qualified', 0)],
+                'colors': ['#10b981', '#ef4444']
+            }
+        
+        elif chart_type == 'radar':
+            # Overall performance radar
+            total_emails = email_stats.get('total_sent', 0) or 1
+            total_cv = cv_stats.get('total', 0) or 1
+            
+            return {
+                'type': 'radar',
+                'title': '📊 Tổng quan hiệu suất',
+                'labels': ['Tỷ lệ phản hồi', 'Phản hồi tích cực', 'Tỷ lệ CV đạt', 'Email thành công', 'Đánh giá CV'],
+                'datasets': [{
+                    'label': 'Hiệu suất (%)',
                     'data': [
-                        email_stats.get('sentiments', {}).get('positive', 0),
-                        email_stats.get('sentiments', {}).get('negative', 0),
-                        email_stats.get('sentiments', {}).get('neutral', 0)
+                        email_stats.get('response_rate', 0),
+                        (email_stats.get('sentiments', {}).get('positive', 0) / max(email_stats.get('responded', 1), 1)) * 100,
+                        cv_stats.get('qualification_rate', 0),
+                        min((email_stats.get('responded', 0) / total_emails) * 100, 100),
+                        min((cv_stats.get('qualified', 0) / total_cv) * 100, 100)
                     ],
-                    'colors': ['#10b981', '#ef4444', '#f59e0b']
-                },
-                'cv_stats': {
-                    'type': 'doughnut',
-                    'title': 'Đánh giá CV',
-                    'labels': ['Đạt yêu cầu', 'Chưa đạt'],
-                    'data': [cv_stats.get('qualified', 0), cv_stats.get('not_qualified', 0)],
-                    'colors': ['#10b981', '#ef4444']
-                }
+                    'backgroundColor': 'rgba(99, 102, 241, 0.2)',
+                    'borderColor': '#6366f1',
+                    'pointBackgroundColor': '#6366f1',
+                    'pointBorderColor': '#fff',
+                    'pointHoverBackgroundColor': '#fff',
+                    'pointHoverBorderColor': '#6366f1'
+                }]
+            }
+        
+        else:  # overview - email status doughnut
+            return {
+                'type': 'doughnut',
+                'title': '📬 Tổng quan trạng thái email',
+                'labels': ['Đã phản hồi ✅', 'Chờ phản hồi ⏳'],
+                'data': [email_stats.get('responded', 0), email_stats.get('pending', 0)],
+                'colors': ['#10b981', '#f59e0b']
             }

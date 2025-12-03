@@ -116,6 +116,37 @@ class DatabaseService:
                 )
             """)
             
+            # Table for chat sessions
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    title TEXT DEFAULT 'New Chat',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            
+            # Table for chat messages
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id INTEGER NOT NULL,
+                    user_id INTEGER NOT NULL,
+                    role TEXT NOT NULL CHECK(role IN ('user', 'bot')),
+                    content TEXT NOT NULL,
+                    has_chart BOOLEAN DEFAULT FALSE,
+                    chart_type TEXT,
+                    chart_data TEXT,
+                    has_export BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                )
+            """)
+            
             conn.commit()
             logger.info("Database initialized successfully")
     
@@ -555,4 +586,178 @@ class DatabaseService:
             cursor.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
             conn.commit()
 
+    # ==================== Chat Session Methods ====================
+    
+    def create_chat_session(self, user_id: int, title: str = "New Chat") -> int:
+        """Create a new chat session"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO chat_sessions (user_id, title)
+                VALUES (?, ?)
+            """, (user_id, title))
+            conn.commit()
+            return cursor.lastrowid
+    
+    def get_chat_sessions(self, user_id: int) -> List[Dict]:
+        """Get all chat sessions for a user"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT cs.*, 
+                       (SELECT COUNT(*) FROM chat_messages WHERE session_id = cs.id) as message_count,
+                       (SELECT content FROM chat_messages WHERE session_id = cs.id ORDER BY created_at DESC LIMIT 1) as last_message
+                FROM chat_sessions cs
+                WHERE cs.user_id = ? AND cs.is_active = TRUE
+                ORDER BY cs.updated_at DESC
+            """, (user_id,))
+            return [dict(row) for row in cursor.fetchall()]
+    
+    def get_chat_session(self, session_id: int, user_id: int) -> Optional[Dict]:
+        """Get a specific chat session"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM chat_sessions 
+                WHERE id = ? AND user_id = ?
+            """, (session_id, user_id))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+    
+    def update_chat_session(self, session_id: int, user_id: int, title: str = None):
+        """Update chat session title"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            if title:
+                cursor.execute("""
+                    UPDATE chat_sessions 
+                    SET title = ?, updated_at = ?
+                    WHERE id = ? AND user_id = ?
+                """, (title, datetime.now().isoformat(), session_id, user_id))
+            else:
+                cursor.execute("""
+                    UPDATE chat_sessions 
+                    SET updated_at = ?
+                    WHERE id = ? AND user_id = ?
+                """, (datetime.now().isoformat(), session_id, user_id))
+            conn.commit()
+    
+    def delete_chat_session(self, session_id: int, user_id: int) -> bool:
+        """Delete a chat session (soft delete)"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE chat_sessions 
+                SET is_active = FALSE, updated_at = ?
+                WHERE id = ? AND user_id = ?
+            """, (datetime.now().isoformat(), session_id, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    def delete_chat_session_permanent(self, session_id: int, user_id: int) -> bool:
+        """Permanently delete a chat session and all its messages"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            # Delete messages first
+            cursor.execute("DELETE FROM chat_messages WHERE session_id = ? AND user_id = ?", 
+                          (session_id, user_id))
+            # Then delete session
+            cursor.execute("DELETE FROM chat_sessions WHERE id = ? AND user_id = ?", 
+                          (session_id, user_id))
+            conn.commit()
+            return cursor.rowcount > 0
+    
+    # ==================== Chat Message Methods ====================
+    
+    def save_chat_message(self, session_id: int, user_id: int, role: str, content: str,
+                          has_chart: bool = False, chart_type: str = None, 
+                          chart_data: Dict = None, has_export: bool = False) -> int:
+        """Save a chat message"""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO chat_messages 
+                (session_id, user_id, role, content, has_chart, chart_type, chart_data, has_export)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (session_id, user_id, role, content, has_chart, chart_type, 
+                  json.dumps(chart_data) if chart_data else None, has_export))
+            
+            # Update session updated_at
+            cursor.execute("""
+                UPDATE chat_sessions SET updated_at = ? WHERE id = ?
+            """, (datetime.now().isoformat(), session_id))
+            
+            conn.commit()
+            return cursor.lastrowid
+    
+    def get_chat_messages(self, session_id: int, user_id: int, limit: int = 100) -> List[Dict]:
+        """Get all messages in a chat session"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT * FROM chat_messages 
+                WHERE session_id = ? AND user_id = ?
+                ORDER BY created_at ASC
+                LIMIT ?
+            """, (session_id, user_id, limit))
+            messages = []
+            for row in cursor.fetchall():
+                msg = dict(row)
+                if msg.get('chart_data'):
+                    try:
+                        msg['chart_data'] = json.loads(msg['chart_data'])
+                    except:
+                        pass
+                messages.append(msg)
+            return messages
+    
+    def get_or_create_active_session(self, user_id: int) -> int:
+        """Get the most recent active session or create a new one"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            
+            # Get most recent active session
+            cursor.execute("""
+                SELECT id FROM chat_sessions 
+                WHERE user_id = ? AND is_active = TRUE
+                ORDER BY updated_at DESC
+                LIMIT 1
+            """, (user_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return row['id']
+            else:
+                # Create new session
+                return self.create_chat_session(user_id, "New Chat")
+    
+    def generate_session_title(self, session_id: int, user_id: int) -> str:
+        """Generate a title based on the first user message"""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT content FROM chat_messages 
+                WHERE session_id = ? AND user_id = ? AND role = 'user'
+                ORDER BY created_at ASC
+                LIMIT 1
+            """, (session_id, user_id))
+            row = cursor.fetchone()
+            
+            if row:
+                content = row['content']
+                # Truncate to first 50 chars
+                title = content[:50] + ('...' if len(content) > 50 else '')
+                
+                # Update session title
+                cursor.execute("""
+                    UPDATE chat_sessions SET title = ? WHERE id = ?
+                """, (title, session_id))
+                conn.commit()
+                return title
+            return "New Chat"
 

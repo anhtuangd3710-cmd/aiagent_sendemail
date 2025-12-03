@@ -2312,6 +2312,7 @@ def chatbot_query():
         is_admin = request.current_user.get('role') == 'admin'
         data = request.json
         query = data.get('query', '').strip()
+        session_id = data.get('session_id')
         
         if not query:
             return jsonify({
@@ -2323,7 +2324,7 @@ def chatbot_query():
         user_settings = database.get_user_settings(user_id)
         
         service = get_chatbot_service()
-        result = service.process_query(user_id, query, user_settings, is_admin=is_admin)
+        result = service.process_query(user_id, query, user_settings, is_admin=is_admin, session_id=session_id)
         
         return jsonify(result)
         
@@ -2451,6 +2452,117 @@ def chatbot_quick_stats():
             }
         })
         
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+# ==================== Chat Session APIs ====================
+
+@app.route('/api/chatbot/sessions', methods=['GET'])
+@login_required
+def get_chat_sessions():
+    """Get all chat sessions for current user"""
+    try:
+        user_id = request.current_user['id']
+        sessions = database.get_chat_sessions(user_id)
+        return jsonify({
+            "success": True,
+            "sessions": sessions
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/sessions', methods=['POST'])
+@login_required
+def create_chat_session():
+    """Create a new chat session"""
+    try:
+        user_id = request.current_user['id']
+        data = request.json or {}
+        title = data.get('title', 'New Chat')
+        
+        session_id = database.create_chat_session(user_id, title)
+        return jsonify({
+            "success": True,
+            "session_id": session_id
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/sessions/<int:session_id>', methods=['GET'])
+@login_required
+def get_chat_session(session_id):
+    """Get a specific chat session with messages"""
+    try:
+        user_id = request.current_user['id']
+        session = database.get_chat_session(session_id, user_id)
+        
+        if not session:
+            return jsonify({
+                "success": False,
+                "error": "Session not found"
+            }), 404
+        
+        messages = database.get_chat_messages(session_id, user_id)
+        return jsonify({
+            "success": True,
+            "session": session,
+            "messages": messages
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/sessions/<int:session_id>', methods=['PUT'])
+@login_required
+def update_chat_session(session_id):
+    """Update chat session title"""
+    try:
+        user_id = request.current_user['id']
+        data = request.json or {}
+        title = data.get('title')
+        
+        database.update_chat_session(session_id, user_id, title)
+        return jsonify({
+            "success": True
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/chatbot/sessions/<int:session_id>', methods=['DELETE'])
+@login_required
+def delete_chat_session(session_id):
+    """Delete a chat session"""
+    try:
+        user_id = request.current_user['id']
+        permanent = request.args.get('permanent', 'false').lower() == 'true'
+        
+        if permanent:
+            success = database.delete_chat_session_permanent(session_id, user_id)
+        else:
+            success = database.delete_chat_session(session_id, user_id)
+        
+        return jsonify({
+            "success": success
+        })
     except Exception as e:
         return jsonify({
             "success": False,

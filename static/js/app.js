@@ -4902,6 +4902,217 @@ function initChatbot() {
     if (exportCvsBtn) {
         exportCvsBtn.addEventListener('click', () => exportToExcel('cv'));
     }
+    
+    // Setup session management
+    setupChatSessions();
+}
+
+// Chat Session Management
+let currentSessionId = null;
+
+function setupChatSessions() {
+    // Load existing sessions
+    loadChatSessions();
+    
+    // New chat button
+    const newChatBtn = document.getElementById('new-chat-btn');
+    if (newChatBtn) {
+        newChatBtn.addEventListener('click', createNewSession);
+    }
+    
+    // Clear all sessions button
+    const clearAllBtn = document.getElementById('clear-all-sessions-btn');
+    if (clearAllBtn) {
+        clearAllBtn.addEventListener('click', clearAllSessions);
+    }
+}
+
+async function loadChatSessions() {
+    try {
+        const response = await fetch('/api/chatbot/sessions');
+        const data = await response.json();
+        
+        if (data.success) {
+            renderSessionsList(data.sessions);
+            
+            // Set current session
+            if (data.sessions.length > 0 && !currentSessionId) {
+                currentSessionId = data.sessions[0].id;
+                loadSessionMessages(currentSessionId);
+            }
+        }
+    } catch (error) {
+        console.error('Error loading sessions:', error);
+    }
+}
+
+function renderSessionsList(sessions) {
+    const container = document.getElementById('sessions-list');
+    if (!container) return;
+    
+    if (sessions.length === 0) {
+        container.innerHTML = `
+            <div class="no-sessions">
+                <i class="fas fa-comments"></i>
+                <p>Chưa có cuộc hội thoại nào</p>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = sessions.map(session => `
+        <div class="session-item ${session.id === currentSessionId ? 'active' : ''}" 
+             data-session-id="${session.id}" onclick="selectSession(${session.id})">
+            <div class="session-icon">
+                <i class="fas fa-comment-dots"></i>
+            </div>
+            <div class="session-info">
+                <span class="session-title">${escapeHtml(session.title || 'New Chat')}</span>
+                <span class="session-time">${formatTimeAgo(session.updated_at)}</span>
+            </div>
+            <button class="session-delete-btn" onclick="event.stopPropagation(); deleteSession(${session.id})" title="Xóa">
+                <i class="fas fa-trash"></i>
+            </button>
+        </div>
+    `).join('');
+}
+
+async function selectSession(sessionId) {
+    currentSessionId = sessionId;
+    
+    // Update UI
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.toggle('active', parseInt(item.dataset.sessionId) === sessionId);
+    });
+    
+    // Load messages
+    await loadSessionMessages(sessionId);
+}
+
+async function loadSessionMessages(sessionId) {
+    try {
+        const response = await fetch(`/api/chatbot/sessions/${sessionId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            // Clear current messages
+            const container = document.getElementById('chatbot-messages');
+            if (container) {
+                // Keep welcome message and suggestions
+                container.innerHTML = `
+                    <div class="chat-message bot">
+                        <div class="message-avatar">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="message-content">
+                            <div class="message-text">
+                                <p>📝 <strong>${escapeHtml(data.session.title || 'Cuộc hội thoại')}</strong></p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // Add messages
+                data.messages.forEach(msg => {
+                    addChatMessage(msg.content, msg.role, false);
+                    
+                    // Render chart if message has chart data
+                    if (msg.has_chart && msg.chart_data) {
+                        renderChart(msg.chart_data);
+                    }
+                });
+            }
+        }
+    } catch (error) {
+        console.error('Error loading session messages:', error);
+    }
+}
+
+async function createNewSession() {
+    try {
+        const response = await fetch('/api/chatbot/sessions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: 'New Chat' })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            currentSessionId = data.session_id;
+            await loadChatSessions();
+            clearChatHistory();
+        }
+    } catch (error) {
+        console.error('Error creating session:', error);
+    }
+}
+
+async function deleteSession(sessionId) {
+    if (!confirm('Bạn có chắc muốn xóa cuộc hội thoại này?')) return;
+    
+    try {
+        const response = await fetch(`/api/chatbot/sessions/${sessionId}?permanent=true`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // If deleted current session, create new one
+            if (sessionId === currentSessionId) {
+                currentSessionId = null;
+                clearChatHistory();
+            }
+            await loadChatSessions();
+        }
+    } catch (error) {
+        console.error('Error deleting session:', error);
+    }
+}
+
+async function clearAllSessions() {
+    if (!confirm('Bạn có chắc muốn xóa TẤT CẢ cuộc hội thoại? Hành động này không thể hoàn tác.')) return;
+    
+    try {
+        const response = await fetch('/api/chatbot/sessions');
+        const data = await response.json();
+        
+        if (data.success) {
+            for (const session of data.sessions) {
+                await fetch(`/api/chatbot/sessions/${session.id}?permanent=true`, {
+                    method: 'DELETE'
+                });
+            }
+            
+            currentSessionId = null;
+            await loadChatSessions();
+            clearChatHistory();
+        }
+    } catch (error) {
+        console.error('Error clearing sessions:', error);
+    }
+}
+
+function formatTimeAgo(dateString) {
+    if (!dateString) return 'Bây giờ';
+    
+    const date = new Date(dateString);
+    const now = new Date();
+    const seconds = Math.floor((now - date) / 1000);
+    
+    if (seconds < 60) return 'Vừa xong';
+    if (seconds < 3600) return Math.floor(seconds / 60) + ' phút trước';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + ' giờ trước';
+    if (seconds < 604800) return Math.floor(seconds / 86400) + ' ngày trước';
+    
+    return date.toLocaleDateString('vi-VN');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 async function sendChatMessage() {
@@ -4924,13 +5135,23 @@ async function sendChatMessage() {
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ query })
+            body: JSON.stringify({ 
+                query,
+                session_id: currentSessionId 
+            })
         });
         
         const data = await response.json();
         
         // Remove loading message
         removeChatMessage(loadingId);
+        
+        // Update current session ID
+        if (data.session_id) {
+            currentSessionId = data.session_id;
+            // Reload sessions list to update titles
+            loadChatSessions();
+        }
         
         if (data.success) {
             // Add bot response
@@ -5228,16 +5449,63 @@ function renderChart(chartData) {
                 beginAtZero: true,
                 ticks: {
                     stepSize: 1
+                },
+                grid: {
+                    color: 'rgba(0, 0, 0, 0.05)'
+                }
+            },
+            x: {
+                grid: {
+                    display: false
                 }
             }
         };
     }
+    
+    // Radar chart specific options
+    if (actualChartData.type === 'radar') {
+        options.scales = {
+            r: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                    stepSize: 20
+                },
+                pointLabels: {
+                    font: {
+                        size: 11
+                    }
+                }
+            }
+        };
+    }
+    
+    // PolarArea specific options
+    if (actualChartData.type === 'polarArea') {
+        options.scales = {
+            r: {
+                beginAtZero: true
+            }
+        };
+    }
+    
+    // Animation options
+    options.animation = {
+        duration: 800,
+        easing: 'easeOutQuart'
+    };
     
     chatbotChart = new Chart(ctx, {
         type: actualChartData.type || 'doughnut',
         data: data,
         options: options
     });
+    
+    // Update chart title in header
+    const titleEl = document.getElementById('chart-title');
+    if (titleEl) {
+        titleEl.textContent = actualChartData.title || 'Biểu đồ';
+    }
     
     // Scroll to chart
     container.scrollIntoView({ behavior: 'smooth', block: 'center' });

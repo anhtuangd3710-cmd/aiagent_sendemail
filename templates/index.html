@@ -427,7 +427,34 @@
 
             <!-- Chatbot Page -->
             <section class="page" id="page-chatbot">
-                <div class="chatbot-container">
+                <div class="chatbot-container chatbot-fullwidth">
+                    <!-- Chat Sessions Sidebar -->
+                    <div class="chat-sessions-sidebar" id="chat-sessions-sidebar">
+                        <div class="sessions-header">
+                            <h4><i class="fas fa-comments"></i> Lịch sử chat</h4>
+                            <button class="btn btn-icon btn-sm" id="new-chat-btn" title="Cuộc hội thoại mới">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                        <div class="sessions-list" id="sessions-list">
+                            <!-- Sessions will be loaded here -->
+                            <div class="session-item active" data-session-id="current">
+                                <div class="session-icon">
+                                    <i class="fas fa-comment-dots"></i>
+                                </div>
+                                <div class="session-info">
+                                    <span class="session-title">New Chat</span>
+                                    <span class="session-time">Bây giờ</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="sessions-footer">
+                            <button class="btn btn-sm btn-outline-danger" id="clear-all-sessions-btn">
+                                <i class="fas fa-trash-alt"></i> Xóa tất cả
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Chatbot Main Area -->
                     <div class="chatbot-main">
                         <!-- Chat Header -->
@@ -495,13 +522,19 @@
                                 <button class="suggestion-btn" data-query="Có bao nhiêu email đang chờ phản hồi?">
                                     <i class="fas fa-clock"></i> Email chờ phản hồi
                                 </button>
-                                <button class="suggestion-btn" data-query="Vẽ biểu đồ số email theo ngày">
-                                    <i class="fas fa-chart-line"></i> Biểu đồ theo ngày
+                                <button class="suggestion-btn" data-query="Vẽ biểu đồ đường số email theo ngày">
+                                    <i class="fas fa-chart-line"></i> Biểu đồ đường
                                 </button>
-                                <button class="suggestion-btn" data-query="Phân tích cảm xúc từ các phản hồi">
-                                    <i class="fas fa-smile"></i> Phân tích cảm xúc
+                                <button class="suggestion-btn" data-query="Vẽ biểu đồ tròn phân tích cảm xúc phản hồi">
+                                    <i class="fas fa-chart-pie"></i> Biểu đồ tròn
                                 </button>
-                                <button class="suggestion-btn" data-query="Thống kê CV đã đánh giá">
+                                <button class="suggestion-btn" data-query="Vẽ biểu đồ cột top người nhận email nhiều nhất">
+                                    <i class="fas fa-chart-bar"></i> Biểu đồ cột
+                                </button>
+                                <button class="suggestion-btn" data-query="Vẽ biểu đồ phân bố điểm CV ứng viên">
+                                    <i class="fas fa-chart-area"></i> Biểu đồ CV
+                                </button>
+                                <button class="suggestion-btn" data-query="Thống kê CV đã đánh giá với biểu đồ">
                                     <i class="fas fa-file-user"></i> Thống kê CV
                                 </button>
                                 <button class="suggestion-btn" data-query="Xuất dữ liệu ra Excel">
@@ -553,99 +586,6 @@
                             </div>
                             <div class="chat-input-hint">
                                 <span><i class="fas fa-lightbulb"></i> Gợi ý: "Hướng dẫn thiết lập Gmail", "Cách lấy API key Gemini", "Thống kê email"</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Stats Sidebar -->
-                    <div class="chatbot-sidebar">
-                        <div class="sidebar-section">
-                            <h4><i class="fas fa-envelope"></i> Thống kê Email</h4>
-                            <div class="stats-grid-mini">
-                                <div class="stat-item-mini">
-                                    <span class="stat-value-mini" id="cb-total-emails">0</span>
-                                    <span class="stat-label-mini">Tổng số</span>
-                                </div>
-                                <div class="stat-item-mini success">
-                                    <span class="stat-value-mini" id="cb-responded-emails">0</span>
-                                    <span class="stat-label-mini">Đã phản hồi</span>
-                                </div>
-                                <div class="stat-item-mini warning">
-                                    <span class="stat-value-mini" id="cb-pending-emails">0</span>
-                                    <span class="stat-label-mini">Chờ phản hồi</span>
-                                </div>
-                                <div class="stat-item-mini info">
-                                    <span class="stat-value-mini" id="cb-response-rate">0%</span>
-                                    <span class="stat-label-mini">Tỷ lệ phản hồi</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="sidebar-section">
-                            <h4><i class="fas fa-smile"></i> Phân tích cảm xúc</h4>
-                            <div class="sentiment-bars">
-                                <div class="sentiment-bar-item">
-                                    <div class="sentiment-label">
-                                        <span>Tích cực</span>
-                                        <span id="cb-sentiment-positive">0</span>
-                                    </div>
-                                    <div class="sentiment-bar positive">
-                                        <div class="sentiment-fill" id="cb-sentiment-positive-bar" style="width: 0%"></div>
-                                    </div>
-                                </div>
-                                <div class="sentiment-bar-item">
-                                    <div class="sentiment-label">
-                                        <span>Trung tính</span>
-                                        <span id="cb-sentiment-neutral">0</span>
-                                    </div>
-                                    <div class="sentiment-bar neutral">
-                                        <div class="sentiment-fill" id="cb-sentiment-neutral-bar" style="width: 0%"></div>
-                                    </div>
-                                </div>
-                                <div class="sentiment-bar-item">
-                                    <div class="sentiment-label">
-                                        <span>Tiêu cực</span>
-                                        <span id="cb-sentiment-negative">0</span>
-                                    </div>
-                                    <div class="sentiment-bar negative">
-                                        <div class="sentiment-fill" id="cb-sentiment-negative-bar" style="width: 0%"></div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="sidebar-section">
-                            <h4><i class="fas fa-file-user"></i> Thống kê CV</h4>
-                            <div class="stats-grid-mini">
-                                <div class="stat-item-mini">
-                                    <span class="stat-value-mini" id="cb-total-cvs">0</span>
-                                    <span class="stat-label-mini">Tổng CV</span>
-                                </div>
-                                <div class="stat-item-mini success">
-                                    <span class="stat-value-mini" id="cb-qualified-cvs">0</span>
-                                    <span class="stat-label-mini">Đạt yêu cầu</span>
-                                </div>
-                            </div>
-                            <div class="cv-rate-display">
-                                <div class="cv-rate-circle" id="cb-cv-rate-circle">
-                                    <span id="cb-qualification-rate">0%</span>
-                                </div>
-                                <span class="cv-rate-label">Tỷ lệ đạt</span>
-                            </div>
-                        </div>
-
-                        <div class="sidebar-section">
-                            <h4><i class="fas fa-download"></i> Xuất dữ liệu</h4>
-                            <div class="export-buttons">
-                                <button class="btn btn-outline-primary btn-sm btn-block" id="export-all-btn">
-                                    <i class="fas fa-file-excel"></i> Xuất tất cả
-                                </button>
-                                <button class="btn btn-outline-secondary btn-sm btn-block" id="export-emails-btn">
-                                    <i class="fas fa-envelope"></i> Chỉ Email
-                                </button>
-                                <button class="btn btn-outline-secondary btn-sm btn-block" id="export-cvs-btn">
-                                    <i class="fas fa-file-user"></i> Chỉ CV
-                                </button>
                             </div>
                         </div>
                     </div>
