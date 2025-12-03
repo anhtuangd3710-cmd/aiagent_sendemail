@@ -879,6 +879,190 @@ class DatabaseServicePostgres:
         """Delete user settings"""
         self.execute_raw("DELETE FROM user_settings WHERE user_id = %s", (user_id,))
     
+    # ==================== Chat Session Methods ====================
+    
+    def _ensure_chat_tables(self):
+        """Ensure chat tables exist"""
+        with self.get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Chat sessions table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_sessions (
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    title VARCHAR(255) DEFAULT 'New Chat',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_active BOOLEAN DEFAULT TRUE
+                )
+            """)
+            
+            # Chat messages table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS chat_messages (
+                    id SERIAL PRIMARY KEY,
+                    session_id INTEGER NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
+                    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role VARCHAR(20) NOT NULL CHECK(role IN ('user', 'bot')),
+                    content TEXT NOT NULL,
+                    has_chart BOOLEAN DEFAULT FALSE,
+                    chart_type VARCHAR(50),
+                    chart_data JSONB,
+                    has_export BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            # Create indexes
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id)")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id)")
+    
+    def create_chat_session(self, user_id: int, title: str = "New Chat") -> int:
+        """Create a new chat session"""
+        self._ensure_chat_tables()
+        return self.insert_raw("""
+            INSERT INTO chat_sessions (user_id, title)
+            VALUES (%s, %s)
+        """, (user_id, title))
+    
+    def get_chat_sessions(self, user_id: int) -> List[Dict]:
+        """Get all chat sessions for a user"""
+        self._ensure_chat_tables()
+        return self.query_raw("""
+            SELECT cs.*, 
+                   (SELECT COUNT(*) FROM chat_messages WHERE session_id = cs.id) as message_count,
+                   (SELECT content FROM chat_messages WHERE session_id = cs.id ORDER BY created_at DESC LIMIT 1) as last_message
+            FROM chat_sessions cs
+            WHERE cs.user_id = %s AND cs.is_active = TRUE
+            ORDER BY cs.updated_at DESC
+        """, (user_id,)) or []
+    
+    def get_chat_session(self, session_id: int, user_id: int) -> Optional[Dict]:
+        """Get a specific chat session"""
+        self._ensure_chat_tables()
+        return self.query_raw("""
+            SELECT * FROM chat_sessions 
+            WHERE id = %s AND user_id = %s
+        """, (session_id, user_id), one=True)
+    
+    def update_chat_session(self, session_id: int, user_id: int, title: str = None):
+        """Update chat session title"""
+        self._ensure_chat_tables()
+        if title:
+            self.execute_raw("""
+                UPDATE chat_sessions 
+                SET title = %s, updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+            """, (title, session_id, user_id))
+        else:
+            self.execute_raw("""
+                UPDATE chat_sessions 
+                SET updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s AND user_id = %s
+            """, (session_id, user_id))
+    
+    def delete_chat_session(self, session_id: int, user_id: int) -> bool:
+        """Delete a chat session (soft delete)"""
+        self._ensure_chat_tables()
+        self.execute_raw("""
+            UPDATE chat_sessions 
+            SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s AND user_id = %s
+        """, (session_id, user_id))
+        return True
+    
+    def delete_chat_session_permanent(self, session_id: int, user_id: int) -> bool:
+        """Permanently delete a chat session and all its messages"""
+        self._ensure_chat_tables()
+        # Delete messages first
+        self.execute_raw("DELETE FROM chat_messages WHERE session_id = %s AND user_id = %s", 
+                        (session_id, user_id))
+        # Then delete session
+        self.execute_raw("DELETE FROM chat_sessions WHERE id = %s AND user_id = %s", 
+                        (session_id, user_id))
+        return True
+    
+    def save_chat_message(self, session_id: int, user_id: int, role: str, content: str,
+                          has_chart: bool = False, chart_type: str = None, 
+                          chart_data: Dict = None, has_export: bool = False) -> int:
+        """Save a chat message"""
+        self._ensure_chat_tables()
+        
+        msg_id = self.insert_raw("""
+            INSERT INTO chat_messages 
+            (session_id, user_id, role, content, has_chart, chart_type, chart_data, has_export)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (session_id, user_id, role, content, has_chart, chart_type, 
+              json.dumps(chart_data) if chart_data else None, has_export))
+        
+        # Update session updated_at
+        self.execute_raw("""
+            UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = %s
+        """, (session_id,))
+        
+        return msg_id
+    
+    def get_chat_messages(self, session_id: int, user_id: int, limit: int = 100) -> List[Dict]:
+        """Get all messages in a chat session"""
+        self._ensure_chat_tables()
+        messages = self.query_raw("""
+            SELECT * FROM chat_messages 
+            WHERE session_id = %s AND user_id = %s
+            ORDER BY created_at ASC
+            LIMIT %s
+        """, (session_id, user_id, limit)) or []
+        
+        # Parse chart_data JSON
+        for msg in messages:
+            if msg.get('chart_data') and isinstance(msg['chart_data'], str):
+                try:
+                    msg['chart_data'] = json.loads(msg['chart_data'])
+                except:
+                    pass
+        return messages
+    
+    def get_or_create_active_session(self, user_id: int) -> int:
+        """Get the most recent active session or create a new one"""
+        self._ensure_chat_tables()
+        
+        # Get most recent active session
+        session = self.query_raw("""
+            SELECT id FROM chat_sessions 
+            WHERE user_id = %s AND is_active = TRUE
+            ORDER BY updated_at DESC
+            LIMIT 1
+        """, (user_id,), one=True)
+        
+        if session:
+            return session['id']
+        else:
+            # Create new session
+            return self.create_chat_session(user_id, "New Chat")
+    
+    def generate_session_title(self, session_id: int, user_id: int) -> str:
+        """Generate a title based on the first user message"""
+        self._ensure_chat_tables()
+        
+        msg = self.query_raw("""
+            SELECT content FROM chat_messages 
+            WHERE session_id = %s AND user_id = %s AND role = 'user'
+            ORDER BY created_at ASC
+            LIMIT 1
+        """, (session_id, user_id), one=True)
+        
+        if msg:
+            content = msg['content']
+            # Truncate to first 50 chars
+            title = content[:50] + ('...' if len(content) > 50 else '')
+            
+            # Update session title
+            self.execute_raw("""
+                UPDATE chat_sessions SET title = %s WHERE id = %s
+            """, (title, session_id))
+            return title
+        return "New Chat"
+    
     def close(self):
         """Close all connections"""
         if self.connection_pool:
