@@ -701,8 +701,9 @@ Phân bố điểm CV:
 
 === TÍNH NĂNG GỬI EMAIL ===
 Bạn có thể giúp người dùng soạn và gửi email. Khi người dùng muốn gửi email:
-1. Hỏi các thông tin cần thiết: Email người nhận, Tên người nhận, Mục đích/Nội dung email
-2. Khi đã có đủ thông tin, hiện form gửi email với show_email_form=true
+- LUÔN set show_email_form=true để hiện form gửi email
+- Nếu user cung cấp thông tin (email, mục đích) thì điền vào email_data
+- Nếu chưa có thông tin, hướng dẫn họ điền form hoặc chat thêm
 
 === QUAN TRỌNG: PHÂN TÍCH Ý ĐỊNH ===
 Sau khi trả lời, hãy thêm một dòng ở cuối response với format:
@@ -714,16 +715,18 @@ Các chart_type có thể là:
 - "table_email", "table_cv", "table_users", "stats_cards", "progress", "comparison"
 - "none": không cần biểu đồ
 
-Khi người dùng muốn GỬI EMAIL:
-- show_email_form=true
-- email_data chứa thông tin: {{"to_email": "...", "to_name": "...", "purpose": "...", "tone": "formal/friendly/casual", "language": "vi/en"}}
+Khi người dùng muốn GỬI EMAIL (gửi mail, soạn email, compose, send email...):
+- LUÔN set show_email_form=true
+- email_data chứa thông tin nếu có: {{"to_email": "...", "to_name": "...", "purpose": "...", "tone": "formal/friendly/casual", "language": "vi/en"}}
+- Nếu chưa có thông tin: email_data=none
 
 Ví dụ:
 - "Gửi email cho abc@gmail.com về việc họp" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data={{"to_email":"abc@gmail.com","purpose":"mời họp","tone":"formal","language":"vi"}}]
-- "Tôi muốn gửi email" → Hỏi thêm thông tin rồi [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, email_data=none]
+- "Tôi muốn gửi email" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data=none]
+- "Soạn mail" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data=none]
 - "Thống kê email" → [INTENT: chart_type=stats_cards, show_chart=true, show_export=false, show_email_form=false, email_data=none]
-- "Ai gửi email nhiều nhất?" → [INTENT: chart_type=horizontalBar, show_chart=true, show_export=false]
-- "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false]
+- "Ai gửi email nhiều nhất?" → [INTENT: chart_type=horizontalBar, show_chart=true, show_export=false, show_email_form=false, email_data=none]
+- "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, email_data=none]
 """
             
             # Generate AI response with intent analysis

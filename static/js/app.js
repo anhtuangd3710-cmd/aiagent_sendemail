@@ -4853,11 +4853,7 @@ let chatbotState = {
 function initChatbot() {
     console.log('Initializing chatbot...');
     
-    // Load initial stats and check admin status
-    loadChatbotStats();
-    loadQuickStats();
-    
-    // Setup event listeners
+    // Setup event listeners FIRST - so user can interact immediately
     const chatInput = document.getElementById('chatbot-input');
     const sendBtn = document.getElementById('chatbot-send-btn');
     
@@ -4868,10 +4864,14 @@ function initChatbot() {
                 sendChatMessage();
             }
         });
+        // Enable input immediately
+        chatInput.disabled = false;
+        chatInput.placeholder = 'Nhập câu hỏi của bạn...';
     }
     
     if (sendBtn) {
         sendBtn.addEventListener('click', sendChatMessage);
+        sendBtn.disabled = false;
     }
     
     // Setup suggestion buttons
@@ -4923,7 +4923,7 @@ function initChatbot() {
         exportCvsBtn.addEventListener('click', () => exportToExcel('cv'));
     }
     
-    // Setup session management
+    // Setup session management (without blocking)
     setupChatSessions();
     
     // Setup close chart button
@@ -4934,6 +4934,12 @@ function initChatbot() {
     
     // Setup mobile sessions toggle
     setupMobileSessionsToggle();
+    
+    // Load stats in background (non-blocking)
+    setTimeout(() => {
+        loadChatbotStats();
+        loadQuickStats();
+    }, 100);
 }
 
 // Mobile Sessions Sidebar Toggle
@@ -4971,9 +4977,6 @@ function setupMobileSessionsToggle() {
 let currentSessionId = null;
 
 function setupChatSessions() {
-    // Load existing sessions
-    loadChatSessions();
-    
     // New chat button
     const newChatBtn = document.getElementById('new-chat-btn');
     if (newChatBtn) {
@@ -4985,6 +4988,11 @@ function setupChatSessions() {
     if (clearAllBtn) {
         clearAllBtn.addEventListener('click', clearAllSessions);
     }
+    
+    // Load existing sessions in background (non-blocking)
+    setTimeout(() => {
+        loadChatSessions();
+    }, 50);
 }
 
 async function loadChatSessions() {
