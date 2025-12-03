@@ -918,9 +918,15 @@ def get_email(email_id):
         email = database.get_email_by_id(email_id, user_id)
         
         if email:
+            # Get response if exists
+            response_data = None
+            if email.get('response_received'):
+                response_data = database.get_response_by_email_id(email_id)
+            
             return jsonify({
                 "success": True,
-                "email": email
+                "email": email,
+                "response": response_data
             })
         else:
             return jsonify({
@@ -928,6 +934,45 @@ def get_email(email_id):
                 "error": "Email not found"
             }), 404
             
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+
+@app.route('/api/emails/<int:email_id>/status', methods=['GET'])
+@login_required
+def get_email_status(email_id):
+    """Get email status and response info"""
+    try:
+        user_id = request.current_user['id']
+        email = database.get_email_by_id(email_id, user_id)
+        
+        if not email:
+            return jsonify({
+                "success": False,
+                "error": "Email not found"
+            }), 404
+        
+        # Get response if exists
+        response_data = None
+        if email.get('response_received'):
+            response_data = database.get_response_by_email_id(email_id)
+        
+        return jsonify({
+            "success": True,
+            "email": {
+                "id": email['id'],
+                "recipient_email": email['recipient_email'],
+                "recipient_name": email.get('recipient_name', ''),
+                "subject": email['subject'],
+                "sent_at": email.get('sent_at') or email.get('created_at'),
+                "response_received": email.get('response_received', False)
+            },
+            "response": response_data
+        })
+        
     except Exception as e:
         return jsonify({
             "success": False,

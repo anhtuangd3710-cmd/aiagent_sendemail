@@ -395,6 +395,14 @@ class DatabaseServicePostgres:
             one=True
         )
     
+    def get_response_by_email_id(self, email_id: int) -> Optional[Dict]:
+        """Get response for a specific email"""
+        return self.query_raw(
+            "SELECT * FROM responses WHERE sent_email_id = %s ORDER BY received_at DESC LIMIT 1",
+            (email_id,),
+            one=True
+        )
+    
     def mark_notification_sent(self, response_id: int):
         """Mark notification as sent"""
         self.execute_raw(

@@ -5907,11 +5907,11 @@ function addEmailFormMessage(emailData = null, emailConfigured = true) {
             </div>
             
             <p class="email-form-hint">
-                <i class="fas fa-lightbulb"></i> Điền thông tin bên dưới, AI sẽ tự động tạo nội dung và gửi email cho bạn.
+                <i class="fas fa-lightbulb"></i> Điền thông tin bên dưới, AI sẽ tạo nội dung email để bạn xem trước.
                 <br><small>💡 Hoặc bạn có thể nhập trực tiếp vào khung chat, ví dụ: "Gửi email đến abc@gmail.com với nội dung..."</small>
             </p>
             
-            <form id="${formId}" class="chat-email-form" onsubmit="confirmAndSendEmail(event, '${formId}')">
+            <form id="${formId}" class="chat-email-form" onsubmit="generateEmailForReview(event, '${formId}')">
                 <div class="email-form-row">
                     <div class="form-group">
                         <label><i class="fas fa-at"></i> Email người nhận *</label>
@@ -5947,9 +5947,9 @@ function addEmailFormMessage(emailData = null, emailConfigured = true) {
                     </div>
                 </div>
                 
-                <div class="email-form-actions">
-                    <button type="submit" class="btn btn-primary btn-confirm-send">
-                        <i class="fas fa-paper-plane"></i> Xác nhận gửi email
+                <div class="email-form-actions" id="actions-${formId}">
+                    <button type="submit" class="btn btn-primary btn-generate-preview">
+                        <i class="fas fa-magic"></i> Tạo nội dung email
                     </button>
                 </div>
                 
@@ -5958,22 +5958,27 @@ function addEmailFormMessage(emailData = null, emailConfigured = true) {
                         <i class="fas fa-circle-notch fa-spin"></i>
                         <span>AI đang tạo nội dung email...</span>
                     </div>
-                    <div class="status-step" data-step="preview" style="display: none;">
-                        <i class="fas fa-check-circle"></i>
-                        <span>Nội dung đã tạo xong</span>
-                    </div>
-                    <div class="status-step" data-step="sending" style="display: none;">
-                        <i class="fas fa-circle-notch fa-spin"></i>
-                        <span>Đang gửi email...</span>
-                    </div>
                 </div>
                 
                 <div class="email-preview-section" id="preview-${formId}" style="display: none;">
                     <div class="preview-header">
-                        <label><i class="fas fa-eye"></i> Nội dung email sẽ gửi</label>
+                        <label><i class="fas fa-eye"></i> Xem trước nội dung email</label>
+                        <button type="button" class="btn-regenerate" onclick="regenerateEmail('${formId}')">
+                            <i class="fas fa-redo"></i> Tạo lại
+                        </button>
                     </div>
                     <div class="preview-subject"></div>
                     <div class="preview-body"></div>
+                    <div class="preview-actions">
+                        <button type="button" class="btn btn-secondary" onclick="editEmailContent('${formId}')">
+                            <i class="fas fa-edit"></i> Chỉnh sửa
+                        </button>
+                        <button type="button" class="btn btn-success btn-send-email" onclick="sendEmailAfterReview('${formId}')">
+                            <i class="fas fa-paper-plane"></i> Xác nhận gửi email
+                        </button>
+                    </div>
+                    <input type="hidden" name="generated_subject" value="">
+                    <input type="hidden" name="generated_body" value="">
                 </div>
             </form>
         </div>
@@ -6034,6 +6039,12 @@ async function generateEmailPreview(formId) {
 
 // Main function: Confirm and send email automatically
 async function confirmAndSendEmail(event, formId) {
+    // Redirect to new flow
+    return generateEmailForReview(event, formId);
+}
+
+// Step 1: Generate email for user to review
+async function generateEmailForReview(event, formId) {
     event.preventDefault();
     
     const form = document.getElementById(formId);
@@ -6053,13 +6064,14 @@ async function confirmAndSendEmail(event, formId) {
     // Show status section
     const statusSection = document.getElementById('status-' + formId);
     const previewSection = document.getElementById('preview-' + formId);
-    const submitBtn = form.querySelector('.btn-confirm-send');
+    const actionsSection = document.getElementById('actions-' + formId);
+    const submitBtn = form.querySelector('.btn-generate-preview');
     
     statusSection.style.display = 'block';
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang xử lý...';
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo nội dung...';
     
-    // Step 1: Generate email content
+    // Generate email content
     const generateStep = statusSection.querySelector('[data-step="generate"]');
     generateStep.style.display = 'flex';
     
@@ -6069,25 +6081,148 @@ async function confirmAndSendEmail(event, formId) {
         showNotification('error', 'Không thể tạo nội dung email. Vui lòng thử lại.');
         statusSection.style.display = 'none';
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Xác nhận gửi email';
+        submitBtn.innerHTML = '<i class="fas fa-magic"></i> Tạo nội dung email';
         return;
     }
     
-    // Step 2: Show preview
+    // Success - show preview for user to review
     generateStep.querySelector('i').className = 'fas fa-check-circle';
-    generateStep.querySelector('span').textContent = 'Nội dung đã tạo xong';
+    generateStep.querySelector('span').textContent = 'Nội dung đã tạo xong - Vui lòng xem trước và xác nhận';
     
-    const previewStep = statusSection.querySelector('[data-step="preview"]');
-    previewStep.style.display = 'flex';
-    
-    // Show preview
+    // Hide the generate button, show preview
+    actionsSection.style.display = 'none';
     previewSection.style.display = 'block';
+    
+    // Show preview content
     previewSection.querySelector('.preview-subject').innerHTML = `<strong>📌 Chủ đề:</strong> ${escapeHtml(emailContent.subject)}`;
     previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${emailContent.body.replace(/\n/g, '<br>')}</div>`;
     
-    // Step 3: Send email
-    const sendingStep = statusSection.querySelector('[data-step="sending"]');
-    sendingStep.style.display = 'flex';
+    // Store generated content in hidden fields
+    form.querySelector('input[name="generated_subject"]').value = emailContent.subject;
+    form.querySelector('input[name="generated_body"]').value = emailContent.body;
+    
+    // Scroll to preview
+    previewSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// Regenerate email content
+async function regenerateEmail(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const actionsSection = document.getElementById('actions-' + formId);
+    const previewSection = document.getElementById('preview-' + formId);
+    const statusSection = document.getElementById('status-' + formId);
+    
+    // Reset UI
+    actionsSection.style.display = 'flex';
+    previewSection.style.display = 'none';
+    statusSection.style.display = 'none';
+    
+    const submitBtn = form.querySelector('.btn-generate-preview');
+    submitBtn.disabled = false;
+    submitBtn.innerHTML = '<i class="fas fa-magic"></i> Tạo nội dung email';
+    
+    // Reset status
+    const generateStep = statusSection.querySelector('[data-step="generate"]');
+    generateStep.querySelector('i').className = 'fas fa-circle-notch fa-spin';
+    generateStep.querySelector('span').textContent = 'AI đang tạo nội dung email...';
+}
+
+// Edit email content before sending
+function editEmailContent(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const subject = form.querySelector('input[name="generated_subject"]').value;
+    const body = form.querySelector('input[name="generated_body"]').value;
+    
+    // Create edit modal
+    const modal = document.createElement('div');
+    modal.className = 'email-edit-modal';
+    modal.id = 'edit-modal-' + formId;
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="closeEditModal('${formId}')"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Chỉnh sửa nội dung email</h3>
+                <button class="btn-close" onclick="closeEditModal('${formId}')">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Chủ đề email</label>
+                    <input type="text" id="edit-subject-${formId}" value="${escapeHtml(subject)}">
+                </div>
+                <div class="form-group">
+                    <label>Nội dung email</label>
+                    <textarea id="edit-body-${formId}" rows="12">${escapeHtml(body)}</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal('${formId}')">
+                    <i class="fas fa-times"></i> Hủy
+                </button>
+                <button class="btn btn-primary" onclick="saveEditedEmail('${formId}')">
+                    <i class="fas fa-save"></i> Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function closeEditModal(formId) {
+    const modal = document.getElementById('edit-modal-' + formId);
+    if (modal) modal.remove();
+}
+
+function saveEditedEmail(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const newSubject = document.getElementById('edit-subject-' + formId).value;
+    const newBody = document.getElementById('edit-body-' + formId).value;
+    
+    // Update hidden fields
+    form.querySelector('input[name="generated_subject"]').value = newSubject;
+    form.querySelector('input[name="generated_body"]').value = newBody;
+    
+    // Update preview
+    const previewSection = document.getElementById('preview-' + formId);
+    previewSection.querySelector('.preview-subject').innerHTML = `<strong>📌 Chủ đề:</strong> ${escapeHtml(newSubject)}`;
+    previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${newBody.replace(/\n/g, '<br>')}</div>`;
+    
+    // Close modal
+    closeEditModal(formId);
+    showNotification('success', 'Đã cập nhật nội dung email');
+}
+
+// Step 2: Send email after user confirms
+async function sendEmailAfterReview(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const toEmail = form.querySelector('input[name="to_email"]').value;
+    const toName = form.querySelector('input[name="to_name"]').value;
+    const purpose = form.querySelector('textarea[name="purpose"]').value;
+    const tone = form.querySelector('select[name="tone"]').value;
+    const language = form.querySelector('select[name="language"]').value;
+    const subject = form.querySelector('input[name="generated_subject"]').value;
+    const body = form.querySelector('input[name="generated_body"]').value;
+    
+    if (!subject || !body) {
+        showNotification('error', 'Vui lòng tạo nội dung email trước');
+        return;
+    }
+    
+    // Show sending state
+    const sendBtn = form.querySelector('.btn-send-email');
+    const originalHTML = sendBtn.innerHTML;
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
     
     try {
         const response = await fetch('/api/email/send', {
@@ -6096,8 +6231,8 @@ async function confirmAndSendEmail(event, formId) {
             body: JSON.stringify({
                 to_email: toEmail,
                 to_name: toName,
-                subject: emailContent.subject,
-                body: emailContent.body,
+                subject: subject,
+                body: body,
                 purpose: purpose,
                 tone: tone,
                 language: language
@@ -6107,42 +6242,251 @@ async function confirmAndSendEmail(event, formId) {
         const data = await response.json();
         
         if (data.success) {
-            // Success!
-            sendingStep.querySelector('i').className = 'fas fa-check-circle';
-            sendingStep.querySelector('span').textContent = 'Email đã gửi thành công!';
-            
-            // Replace form with success message
-            setTimeout(() => {
-                form.innerHTML = `
-                    <div class="email-sent-success">
-                        <i class="fas fa-check-circle"></i>
-                        <h4>Email đã gửi thành công!</h4>
-                        <p><strong>Đến:</strong> ${escapeHtml(toEmail)}</p>
-                        <p><strong>Chủ đề:</strong> ${escapeHtml(emailContent.subject)}</p>
+            // Replace form with success message and follow-up options
+            const emailId = data.email_id;
+            form.innerHTML = `
+                <div class="email-sent-success">
+                    <i class="fas fa-check-circle"></i>
+                    <h4>Email đã gửi thành công!</h4>
+                    <p><strong>Đến:</strong> ${escapeHtml(toEmail)}</p>
+                    <p><strong>Chủ đề:</strong> ${escapeHtml(subject)}</p>
+                    
+                    <div class="email-followup-actions">
+                        <button class="btn btn-outline" onclick="checkEmailStatus(${emailId})">
+                            <i class="fas fa-sync-alt"></i> Kiểm tra phản hồi
+                        </button>
+                        <button class="btn btn-outline" onclick="viewEmailDetails(${emailId})">
+                            <i class="fas fa-eye"></i> Xem chi tiết
+                        </button>
+                        <button class="btn btn-outline" onclick="replyToEmail(${emailId}, '${escapeHtml(toEmail)}')">
+                            <i class="fas fa-reply"></i> Gửi email tiếp
+                        </button>
                     </div>
-                `;
-            }, 1000);
+                </div>
+            `;
             
             showNotification('success', 'Email đã được gửi thành công!');
-            
-            // Add bot message
-            addChatMessage(`✅ Đã gửi email thành công đến **${toEmail}**!`, 'bot');
-            
-            // Refresh stats
+            addChatMessage(`✅ Đã gửi email thành công đến **${toEmail}**!\n\n💡 Bạn có thể hỏi tôi về trạng thái email này, ví dụ: "Email đến ${toEmail} đã có phản hồi chưa?"`, 'bot');
             loadQuickStats();
         } else {
             throw new Error(data.message || 'Không thể gửi email');
         }
     } catch (error) {
         console.error('Error sending email:', error);
-        sendingStep.querySelector('i').className = 'fas fa-times-circle';
-        sendingStep.querySelector('span').textContent = 'Lỗi khi gửi email';
-        sendingStep.style.color = 'var(--danger-color)';
-        
         showNotification('error', error.message || 'Lỗi kết nối, vui lòng thử lại');
-        submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Thử lại';
+        sendBtn.disabled = false;
+        sendBtn.innerHTML = originalHTML;
     }
+}
+
+// Check email status and response
+async function checkEmailStatus(emailId) {
+    try {
+        addChatMessage('Đang kiểm tra trạng thái email...', 'user');
+        
+        const response = await fetch(`/api/emails/${emailId}/status`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const email = data.email;
+            let statusMessage = '';
+            
+            if (email.response_received) {
+                statusMessage = `📬 **Email đến ${email.recipient_email} đã có phản hồi!**\n\n`;
+                statusMessage += `📅 Gửi lúc: ${formatDateTime(email.sent_at)}\n`;
+                statusMessage += `✅ Đã nhận phản hồi\n\n`;
+                
+                if (data.response) {
+                    statusMessage += `**Nội dung phản hồi:**\n`;
+                    statusMessage += `> ${data.response.response_subject}\n\n`;
+                    statusMessage += `${data.response.response_body.substring(0, 300)}${data.response.response_body.length > 300 ? '...' : ''}`;
+                }
+            } else {
+                statusMessage = `📧 **Email đến ${email.recipient_email}**\n\n`;
+                statusMessage += `📅 Gửi lúc: ${formatDateTime(email.sent_at)}\n`;
+                statusMessage += `⏳ Chưa có phản hồi\n\n`;
+                statusMessage += `💡 Email có thể mất một thời gian để được phản hồi. Bạn có thể kiểm tra lại sau.`;
+            }
+            
+            addChatMessage(statusMessage, 'bot');
+            
+            // Show action buttons
+            addEmailStatusActions(emailId, email.recipient_email, email.response_received);
+        } else {
+            addChatMessage('❌ Không thể kiểm tra trạng thái email. Vui lòng thử lại.', 'bot');
+        }
+    } catch (error) {
+        console.error('Error checking email status:', error);
+        addChatMessage('❌ Lỗi kết nối. Vui lòng thử lại.', 'bot');
+    }
+}
+
+// View email details
+async function viewEmailDetails(emailId) {
+    try {
+        addChatMessage('Đang tải chi tiết email...', 'user');
+        
+        const response = await fetch(`/api/emails/${emailId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const email = data.email;
+            addEmailDetailsMessage(email, data.response);
+        } else {
+            addChatMessage('❌ Không thể tải chi tiết email.', 'bot');
+        }
+    } catch (error) {
+        console.error('Error loading email details:', error);
+        addChatMessage('❌ Lỗi kết nối. Vui lòng thử lại.', 'bot');
+    }
+}
+
+// Add email details message with full content
+function addEmailDetailsMessage(email, responseData = null) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message bot email-details-message';
+    
+    let responseHtml = '';
+    if (email.response_received && responseData) {
+        responseHtml = `
+            <div class="email-response-section">
+                <div class="response-header">
+                    <i class="fas fa-reply"></i>
+                    <span>Phản hồi đã nhận</span>
+                </div>
+                <div class="response-content">
+                    <p><strong>Chủ đề:</strong> ${escapeHtml(responseData.response_subject || 'N/A')}</p>
+                    <div class="response-body">${escapeHtml(responseData.response_body || '').replace(/\n/g, '<br>')}</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content email-details-container">
+            <div class="email-details-header">
+                <i class="fas fa-envelope-open-text"></i>
+                <span>Chi tiết Email</span>
+                <span class="email-status-badge ${email.response_received ? 'responded' : 'pending'}">
+                    ${email.response_received ? '✅ Đã phản hồi' : '⏳ Chờ phản hồi'}
+                </span>
+            </div>
+            
+            <div class="email-details-body">
+                <div class="detail-row">
+                    <span class="detail-label"><i class="fas fa-user"></i> Người nhận:</span>
+                    <span class="detail-value">${escapeHtml(email.recipient_name || '')} &lt;${escapeHtml(email.recipient_email)}&gt;</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label"><i class="fas fa-heading"></i> Chủ đề:</span>
+                    <span class="detail-value">${escapeHtml(email.subject)}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label"><i class="fas fa-clock"></i> Gửi lúc:</span>
+                    <span class="detail-value">${formatDateTime(email.sent_at)}</span>
+                </div>
+                <div class="detail-row full-width">
+                    <span class="detail-label"><i class="fas fa-align-left"></i> Nội dung:</span>
+                    <div class="detail-body">${escapeHtml(email.body || '').replace(/\n/g, '<br>')}</div>
+                </div>
+            </div>
+            
+            ${responseHtml}
+            
+            <div class="email-details-actions">
+                <button class="btn btn-outline" onclick="checkEmailStatus(${email.id})">
+                    <i class="fas fa-sync-alt"></i> Cập nhật trạng thái
+                </button>
+                <button class="btn btn-primary" onclick="replyToEmail(${email.id}, '${escapeHtml(email.recipient_email)}')">
+                    <i class="fas fa-reply"></i> Gửi email phản hồi
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
+}
+
+// Add email status action buttons
+function addEmailStatusActions(emailId, recipientEmail, hasResponse) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message bot';
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content">
+            <div class="quick-action-buttons">
+                <button class="quick-action-btn" onclick="viewEmailDetails(${emailId})">
+                    <i class="fas fa-eye"></i> Xem chi tiết đầy đủ
+                </button>
+                <button class="quick-action-btn" onclick="replyToEmail(${emailId}, '${escapeHtml(recipientEmail)}')">
+                    <i class="fas fa-reply"></i> Gửi email ${hasResponse ? 'phản hồi' : 'tiếp theo'}
+                </button>
+                <button class="quick-action-btn" onclick="checkEmailConfigAndShowForm()">
+                    <i class="fas fa-plus"></i> Gửi email mới
+                </button>
+            </div>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
+}
+
+// Reply to an email
+async function replyToEmail(emailId, recipientEmail) {
+    try {
+        // Fetch original email for context
+        const response = await fetch(`/api/emails/${emailId}`);
+        const data = await response.json();
+        
+        if (data.success) {
+            const email = data.email;
+            
+            // Pre-fill reply form
+            const replyData = {
+                to_email: recipientEmail,
+                to_name: email.recipient_name || '',
+                purpose: `Phản hồi email về: "${email.subject}"`,
+                tone: 'professional',
+                language: 'vi'
+            };
+            
+            addChatMessage(`Soạn email phản hồi đến **${recipientEmail}**...`, 'bot');
+            checkEmailConfigAndShowForm(replyData);
+        } else {
+            // Just show empty form with recipient
+            checkEmailConfigAndShowForm({ to_email: recipientEmail });
+        }
+    } catch (error) {
+        console.error('Error preparing reply:', error);
+        checkEmailConfigAndShowForm({ to_email: recipientEmail });
+    }
+}
+
+// Format date time helper
+function formatDateTime(dateString) {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString('vi-VN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 }
 
 // Keep old function for backward compatibility but redirect to new one
@@ -6174,9 +6518,18 @@ async function checkEmailConfigAndShowForm(emailData = null) {
 
 // Expose email functions to global scope for inline onclick
 window.generateEmailPreview = generateEmailPreview;
+window.generateEmailForReview = generateEmailForReview;
+window.regenerateEmail = regenerateEmail;
+window.editEmailContent = editEmailContent;
+window.closeEditModal = closeEditModal;
+window.saveEditedEmail = saveEditedEmail;
+window.sendEmailAfterReview = sendEmailAfterReview;
 window.confirmAndSendEmail = confirmAndSendEmail;
 window.sendEmailFromChat = sendEmailFromChat;
 window.checkEmailConfigAndShowForm = checkEmailConfigAndShowForm;
+window.checkEmailStatus = checkEmailStatus;
+window.viewEmailDetails = viewEmailDetails;
+window.replyToEmail = replyToEmail;
 
 function formatChatContent(content) {
     // Convert markdown-like formatting to HTML
