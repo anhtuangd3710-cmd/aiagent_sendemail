@@ -5080,9 +5080,9 @@ async function loadSessionMessages(sessionId) {
                 data.messages.forEach(msg => {
                     addChatMessage(msg.content, msg.role, false);
                     
-                    // Render chart if message has chart data
+                    // Render chart inline if message has chart data
                     if (msg.has_chart && msg.chart_data) {
-                        renderChart(msg.chart_data);
+                        addChartMessage(msg.chart_data);
                     }
                 });
             }

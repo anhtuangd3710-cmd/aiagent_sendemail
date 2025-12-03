@@ -1007,19 +1007,25 @@ class DatabaseServicePostgres:
         """Get all messages in a chat session"""
         self._ensure_chat_tables()
         messages = self.query_raw("""
-            SELECT * FROM chat_messages 
+            SELECT id, session_id, user_id, role, content, 
+                   has_chart, chart_type, chart_data, has_export, created_at
+            FROM chat_messages 
             WHERE session_id = %s AND user_id = %s
             ORDER BY created_at ASC
             LIMIT %s
         """, (session_id, user_id, limit)) or []
         
-        # Parse chart_data JSON
+        # Ensure chart_data is properly formatted
         for msg in messages:
-            if msg.get('chart_data') and isinstance(msg['chart_data'], str):
-                try:
-                    msg['chart_data'] = json.loads(msg['chart_data'])
-                except:
-                    pass
+            # Parse chart_data if it's a string
+            if msg.get('chart_data'):
+                if isinstance(msg['chart_data'], str):
+                    try:
+                        msg['chart_data'] = json.loads(msg['chart_data'])
+                    except:
+                        msg['chart_data'] = None
+            # Ensure has_chart is boolean
+            msg['has_chart'] = bool(msg.get('has_chart'))
         return messages
     
     def get_session_messages(self, session_id: int, limit: int = 50) -> List[Dict]:
