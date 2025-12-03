@@ -28,7 +28,12 @@
         </div>
         
         <nav class="sidebar-nav">
-            <a href="#" class="nav-item active" data-page="compose">
+            <a href="#" class="nav-item active" data-page="chatbot">
+                <i class="fas fa-comments"></i>
+                <span>Trợ lý AI</span>
+                <span class="badge" style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);">✨</span>
+            </a>
+            <a href="#" class="nav-item" data-page="compose">
                 <i class="fas fa-pen-to-square"></i>
                 <span>Soạn Email</span>
             </a>
@@ -41,11 +46,6 @@
                 <i class="fas fa-file-user"></i>
                 <span>Đánh giá CV</span>
                 <span class="badge cv-badge" id="qualified-count" style="background: var(--success-color);">0</span>
-            </a>
-            <a href="#" class="nav-item" data-page="chatbot">
-                <i class="fas fa-comments"></i>
-                <span>Trợ lý AI</span>
-                <span class="badge" style="background: linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%);">New</span>
             </a>
             <a href="#" class="nav-item" data-page="monitor">
                 <i class="fas fa-satellite-dish"></i>
@@ -107,7 +107,7 @@
         <!-- Page Content -->
         <div class="content">
             <!-- Compose Page -->
-            <section class="page active" id="page-compose">
+            <section class="page" id="page-compose">
                 <div class="compose-container">
                     <div class="compose-form-section">
                         <div class="card">
@@ -426,7 +426,7 @@
             </section>
 
             <!-- Chatbot Page -->
-            <section class="page" id="page-chatbot">
+            <section class="page active" id="page-chatbot">
                 <!-- Sessions Overlay for Mobile -->
                 <div class="sessions-overlay" id="sessions-overlay"></div>
                 

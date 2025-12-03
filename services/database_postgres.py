@@ -910,9 +910,18 @@ class DatabaseServicePostgres:
                     chart_type VARCHAR(50),
                     chart_data JSONB,
                     has_export BOOLEAN DEFAULT FALSE,
+                    has_email_form BOOLEAN DEFAULT FALSE,
+                    email_data JSONB,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
+            
+            # Add new columns if they don't exist (for existing databases)
+            try:
+                cursor.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS has_email_form BOOLEAN DEFAULT FALSE")
+                cursor.execute("ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS email_data JSONB")
+            except:
+                pass
             
             # Create indexes
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id)")
@@ -985,16 +994,18 @@ class DatabaseServicePostgres:
     
     def save_chat_message(self, session_id: int, user_id: int, role: str, content: str,
                           has_chart: bool = False, chart_type: str = None, 
-                          chart_data: Dict = None, has_export: bool = False) -> int:
+                          chart_data: Dict = None, has_export: bool = False,
+                          has_email_form: bool = False, email_data: Dict = None) -> int:
         """Save a chat message"""
         self._ensure_chat_tables()
         
         msg_id = self.insert_raw("""
             INSERT INTO chat_messages 
-            (session_id, user_id, role, content, has_chart, chart_type, chart_data, has_export)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (session_id, user_id, role, content, has_chart, chart_type, chart_data, has_export, has_email_form, email_data)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """, (session_id, user_id, role, content, has_chart, chart_type, 
-              json.dumps(chart_data) if chart_data else None, has_export))
+              json.dumps(chart_data) if chart_data else None, has_export,
+              has_email_form, json.dumps(email_data) if email_data else None))
         
         # Update session updated_at
         self.execute_raw("""
@@ -1008,14 +1019,15 @@ class DatabaseServicePostgres:
         self._ensure_chat_tables()
         messages = self.query_raw("""
             SELECT id, session_id, user_id, role, content, 
-                   has_chart, chart_type, chart_data, has_export, created_at
+                   has_chart, chart_type, chart_data, has_export, 
+                   has_email_form, email_data, created_at
             FROM chat_messages 
             WHERE session_id = %s AND user_id = %s
             ORDER BY created_at ASC
             LIMIT %s
         """, (session_id, user_id, limit)) or []
         
-        # Ensure chart_data is properly formatted
+        # Ensure chart_data and email_data are properly formatted
         for msg in messages:
             # Parse chart_data if it's a string
             if msg.get('chart_data'):
@@ -1024,8 +1036,16 @@ class DatabaseServicePostgres:
                         msg['chart_data'] = json.loads(msg['chart_data'])
                     except:
                         msg['chart_data'] = None
-            # Ensure has_chart is boolean
+            # Parse email_data if it's a string
+            if msg.get('email_data'):
+                if isinstance(msg['email_data'], str):
+                    try:
+                        msg['email_data'] = json.loads(msg['email_data'])
+                    except:
+                        msg['email_data'] = None
+            # Ensure booleans
             msg['has_chart'] = bool(msg.get('has_chart'))
+            msg['has_email_form'] = bool(msg.get('has_email_form'))
         return messages
     
     def get_session_messages(self, session_id: int, limit: int = 50) -> List[Dict]:

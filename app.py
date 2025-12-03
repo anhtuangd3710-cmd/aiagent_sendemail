@@ -728,6 +728,140 @@ def preview_email():
         }), 500
 
 
+@app.route('/api/email/generate', methods=['POST'])
+@login_required
+def generate_email_from_chat():
+    """Generate email content from chatbot - simplified version"""
+    try:
+        data = request.json
+        user_id = request.current_user['id']
+        
+        to_email = data.get('to_email')
+        to_name = data.get('to_name', '')
+        purpose = data.get('purpose')
+        tone = data.get('tone', 'formal')
+        language = data.get('language', 'vi')
+        
+        if not to_email or not purpose:
+            return jsonify({
+                "success": False,
+                "message": "Thiếu thông tin email người nhận hoặc mục đích"
+            }), 400
+        
+        # Get user settings
+        user_settings = database.get_user_settings(user_id)
+        sender_name = user_settings.get('sender_name', request.current_user.get('name', 'User'))
+        
+        # Get AI agent for user
+        user_ai_agent = get_ai_agent_for_user(user_settings)
+        
+        # Generate email using AI
+        generated_email = user_ai_agent.generate_email(
+            sender_name=sender_name,
+            recipient_name=to_name or to_email.split('@')[0],
+            recipient_email=to_email,
+            purpose=purpose,
+            tone=tone,
+            language=language,
+            additional_context=None
+        )
+        
+        return jsonify({
+            "success": True,
+            "subject": generated_email['subject'],
+            "body": generated_email['body']
+        })
+        
+    except Exception as e:
+        print(f"Error generating email from chat: {e}")
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+
+@app.route('/api/email/send', methods=['POST'])
+@login_required
+def send_email_from_chat():
+    """Send email from chatbot - simplified version"""
+    try:
+        data = request.json
+        user_id = request.current_user['id']
+        
+        to_email = data.get('to_email')
+        to_name = data.get('to_name', '')
+        subject = data.get('subject')
+        body = data.get('body')
+        purpose = data.get('purpose', '')
+        tone = data.get('tone', 'formal')
+        language = data.get('language', 'vi')
+        
+        if not all([to_email, subject, body]):
+            return jsonify({
+                "success": False,
+                "message": "Thiếu thông tin cần thiết để gửi email"
+            }), 400
+        
+        # Get user settings
+        user_settings = database.get_user_settings(user_id)
+        
+        if not user_settings or not user_settings.get('sender_email') or not user_settings.get('sender_password'):
+            return jsonify({
+                "success": False,
+                "message": "Bạn chưa cấu hình Email gửi. Vui lòng vào 'Hồ sơ & API Keys' để cấu hình."
+            }), 400
+        
+        # Create email service with user's settings
+        user_email_service = EmailService()
+        user_email_service.sender_email = user_settings.get('sender_email')
+        user_email_service.sender_password = user_settings.get('sender_password')
+        user_email_service.smtp_host = user_settings.get('email_host', 'smtp.gmail.com')
+        user_email_service.smtp_port = int(user_settings.get('email_port', 587))
+        
+        sender_name = user_settings.get('sender_name', request.current_user.get('name', 'User'))
+        
+        # Send email
+        send_result = user_email_service.send_email(
+            to_email=to_email,
+            subject=subject,
+            body=body
+        )
+        
+        if send_result.get('success'):
+            # Track the email
+            email_id = database.create_email_tracking(
+                user_id=user_id,
+                recipient_email=to_email,
+                recipient_name=to_name or to_email.split('@')[0],
+                subject=subject,
+                body=body,
+                purpose=purpose,
+                tone=tone,
+                language=language
+            )
+            
+            # Invalidate cache
+            server_cache.delete(f'emails:{user_id}')
+            
+            return jsonify({
+                "success": True,
+                "message": f"Email đã được gửi đến {to_email}",
+                "email_id": email_id
+            })
+        else:
+            return jsonify({
+                "success": False,
+                "message": send_result.get('error', 'Không thể gửi email')
+            }), 500
+        
+    except Exception as e:
+        print(f"Error sending email from chat: {e}")
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
+
+
 @app.route('/api/emails', methods=['GET'])
 @login_required
 def get_emails():
@@ -2100,7 +2234,7 @@ def analyze_youtube_channel():
         
         return jsonify(result)
     except Exception as e:
-        logger.error(f"YouTube analysis error: {e}")
+        print(f"YouTube analysis error: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

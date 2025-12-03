@@ -5084,6 +5084,11 @@ async function loadSessionMessages(sessionId) {
                     if (msg.has_chart && msg.chart_data) {
                         addChartMessage(msg.chart_data);
                     }
+                    
+                    // Render email form if message has email form
+                    if (msg.has_email_form) {
+                        addEmailFormMessage(msg.email_data);
+                    }
                 });
             }
         }
@@ -5226,6 +5231,11 @@ async function sendChatMessage() {
                 addChartMessage(data.chart_data);
             }
             
+            // Show email form if AI wants to show email composer
+            if (data.show_email_form) {
+                addEmailFormMessage(data.email_data);
+            }
+            
             // Show export options if user wants to export
             if (data.show_export) {
                 showExportOptions();
@@ -5312,13 +5322,36 @@ function addChartMessage(chartData) {
         }
     }
     
+    // Handle different visualization types
+    let contentHTML = '';
+    const chartType = actualChartData.type;
+    
+    if (chartType === 'stats_cards') {
+        // Render stats cards
+        contentHTML = renderStatsCards(actualChartData);
+    } else if (chartType === 'progress') {
+        // Render progress bars
+        contentHTML = renderProgressBars(actualChartData);
+    } else if (chartType === 'table') {
+        // Render table
+        contentHTML = renderTable(actualChartData);
+    } else if (chartType === 'comparison') {
+        // Render comparison view
+        contentHTML = renderComparison(actualChartData);
+    } else {
+        // Default chart (canvas)
+        contentHTML = `
+            <div class="inline-chart-wrapper">
+                <canvas id="${canvasId}"></canvas>
+            </div>
+        `;
+    }
+    
     messageDiv.innerHTML = `
         <div class="message-avatar"><i class="fas fa-chart-pie"></i></div>
         <div class="message-content chart-content">
             <div class="chart-title-inline">${actualChartData.title || 'Biểu đồ'}</div>
-            <div class="inline-chart-wrapper">
-                <canvas id="${canvasId}"></canvas>
-            </div>
+            ${contentHTML}
             <div class="message-time">${new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</div>
         </div>
     `;
@@ -5326,12 +5359,103 @@ function addChartMessage(chartData) {
     container.appendChild(messageDiv);
     container.scrollTop = container.scrollHeight;
     
-    // Render chart after DOM is updated
-    setTimeout(() => {
-        renderInlineChart(canvasId, actualChartData);
-    }, 100);
+    // Render canvas chart if applicable
+    if (!['stats_cards', 'progress', 'table', 'comparison'].includes(chartType)) {
+        setTimeout(() => {
+            renderInlineChart(canvasId, actualChartData);
+        }, 100);
+    }
     
     return messageId;
+}
+
+// Render stats cards
+function renderStatsCards(data) {
+    const cards = data.cards || [];
+    return `
+        <div class="stats-cards-grid">
+            ${cards.map(card => `
+                <div class="stat-card-mini" style="--card-color: ${card.color}">
+                    <div class="stat-card-icon">${card.icon}</div>
+                    <div class="stat-card-info">
+                        <div class="stat-card-value">${card.value.toLocaleString()}</div>
+                        <div class="stat-card-label">${card.label}</div>
+                        ${card.percent !== undefined ? `<div class="stat-card-percent">${card.percent}%</div>` : ''}
+                        ${card.trend ? `<div class="stat-card-trend">${card.trend}</div>` : ''}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render progress bars
+function renderProgressBars(data) {
+    const items = data.items || [];
+    return `
+        <div class="progress-bars-container">
+            ${items.map(item => `
+                <div class="progress-item">
+                    <div class="progress-header">
+                        <span class="progress-label">${item.label}</span>
+                        <span class="progress-value">${item.value}/${item.max} (${item.percent}%)</span>
+                    </div>
+                    <div class="progress-bar-wrapper">
+                        <div class="progress-bar-fill" style="width: ${item.percent}%; background-color: ${item.color}"></div>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+// Render table
+function renderTable(data) {
+    const headers = data.headers || [];
+    const rows = data.rows || [];
+    return `
+        <div class="chat-table-wrapper">
+            <table class="chat-table">
+                <thead>
+                    <tr>
+                        ${headers.map(h => `<th>${h}</th>`).join('')}
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows.map(row => `
+                        <tr>
+                            ${row.map(cell => `<td>${cell}</td>`).join('')}
+                        </tr>
+                    `).join('')}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+// Render comparison view
+function renderComparison(data) {
+    const items = data.items || [];
+    return `
+        <div class="comparison-container">
+            ${items.map(item => `
+                <div class="comparison-card" style="--comp-color: ${item.color}">
+                    <div class="comparison-header">
+                        <span class="comparison-icon">${item.icon}</span>
+                        <span class="comparison-label">${item.label}</span>
+                    </div>
+                    <div class="comparison-stats">
+                        ${item.stats.map(stat => `
+                            <div class="comparison-stat">
+                                <div class="comparison-stat-value">${stat.value}</div>
+                                <div class="comparison-stat-name">${stat.name}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+    `;
 }
 
 function renderInlineChart(canvasId, chartData) {
@@ -5423,9 +5547,27 @@ function renderInlineChart(canvasId, chartData) {
         };
     }
     
+    // Horizontal bar options
+    let actualType = chartData.type;
+    if (chartData.type === 'horizontalBar') {
+        actualType = 'bar';
+        options.indexAxis = 'y';
+        options.scales = {
+            x: {
+                beginAtZero: true,
+                ticks: { stepSize: 1, font: { size: 10 } },
+                grid: { color: 'rgba(0, 0, 0, 0.05)' }
+            },
+            y: {
+                grid: { display: false },
+                ticks: { font: { size: 10 } }
+            }
+        };
+    }
+    
     // Create chart
     const chart = new Chart(ctx, {
-        type: chartData.type || 'doughnut',
+        type: actualType || 'doughnut',
         data: data,
         options: options
     });
@@ -5437,6 +5579,315 @@ function renderInlineChart(canvasId, chartData) {
     const container = document.getElementById('chatbot-messages');
     if (container) {
         container.scrollTop = container.scrollHeight;
+    }
+}
+
+// Email form message counter
+let emailFormCounter = 0;
+
+function addEmailFormMessage(emailData = null) {
+    const container = document.getElementById('chatbot-messages');
+    if (!container) return null;
+    
+    emailFormCounter++;
+    const messageId = 'email-form-msg-' + Date.now();
+    const formId = 'chat-email-form-' + emailFormCounter;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'chat-message bot email-form-message';
+    messageDiv.id = messageId;
+    
+    // Pre-fill data from AI if available
+    const toEmail = emailData?.to_email || '';
+    const toName = emailData?.to_name || '';
+    const purpose = emailData?.purpose || '';
+    const tone = emailData?.tone || 'formal';
+    const language = emailData?.language || 'vi';
+    
+    messageDiv.innerHTML = `
+        <div class="message-avatar">
+            <i class="fas fa-robot"></i>
+        </div>
+        <div class="message-content email-form-container">
+            <div class="email-form-header">
+                <i class="fas fa-envelope"></i>
+                <span>Soạn Email với AI</span>
+            </div>
+            <form id="${formId}" class="chat-email-form" onsubmit="sendEmailFromChat(event, '${formId}')">
+                <div class="email-form-row">
+                    <div class="form-group">
+                        <label><i class="fas fa-at"></i> Email người nhận</label>
+                        <input type="email" name="to_email" value="${escapeHtml(toEmail)}" placeholder="example@email.com" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Tên người nhận</label>
+                        <input type="text" name="to_name" value="${escapeHtml(toName)}" placeholder="Tên người nhận">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label><i class="fas fa-comment-alt"></i> Mục đích / Nội dung chính</label>
+                    <textarea name="purpose" rows="2" placeholder="Mô tả ngắn về mục đích email..." required>${escapeHtml(purpose)}</textarea>
+                </div>
+                
+                <div class="email-form-row">
+                    <div class="form-group">
+                        <label><i class="fas fa-palette"></i> Phong cách</label>
+                        <select name="tone">
+                            <option value="formal" ${tone === 'formal' ? 'selected' : ''}>📝 Trang trọng</option>
+                            <option value="friendly" ${tone === 'friendly' ? 'selected' : ''}>😊 Thân thiện</option>
+                            <option value="casual" ${tone === 'casual' ? 'selected' : ''}>💬 Giản dị</option>
+                            <option value="professional" ${tone === 'professional' ? 'selected' : ''}>👔 Chuyên nghiệp</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-language"></i> Ngôn ngữ</label>
+                        <select name="language">
+                            <option value="vi" ${language === 'vi' ? 'selected' : ''}>🇻🇳 Tiếng Việt</option>
+                            <option value="en" ${language === 'en' ? 'selected' : ''}>🇺🇸 English</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="email-form-actions">
+                    <button type="button" class="btn btn-secondary" onclick="generateEmailPreview('${formId}')">
+                        <i class="fas fa-magic"></i> Tạo nội dung AI
+                    </button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane"></i> Gửi email
+                    </button>
+                </div>
+                
+                <div class="email-preview-section" id="preview-${formId}" style="display: none;">
+                    <div class="preview-header">
+                        <label><i class="fas fa-eye"></i> Xem trước email</label>
+                        <button type="button" class="btn-edit-preview" onclick="editEmailPreview('${formId}')">
+                            <i class="fas fa-edit"></i> Chỉnh sửa
+                        </button>
+                    </div>
+                    <div class="preview-subject"></div>
+                    <div class="preview-body"></div>
+                    <input type="hidden" name="subject" value="">
+                    <input type="hidden" name="body" value="">
+                </div>
+            </form>
+        </div>
+    `;
+    
+    container.appendChild(messageDiv);
+    container.scrollTop = container.scrollHeight;
+    
+    return messageId;
+}
+
+async function generateEmailPreview(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const toEmail = form.querySelector('input[name="to_email"]').value;
+    const toName = form.querySelector('input[name="to_name"]').value;
+    const purpose = form.querySelector('textarea[name="purpose"]').value;
+    const tone = form.querySelector('select[name="tone"]').value;
+    const language = form.querySelector('select[name="language"]').value;
+    
+    if (!toEmail || !purpose) {
+        showNotification('error', 'Vui lòng nhập email người nhận và mục đích email');
+        return;
+    }
+    
+    // Show loading
+    const previewBtn = form.querySelector('.btn-secondary');
+    const originalHTML = previewBtn.innerHTML;
+    previewBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang tạo...';
+    previewBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/email/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to_email: toEmail,
+                to_name: toName,
+                purpose: purpose,
+                tone: tone,
+                language: language
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Show preview section
+            const previewSection = document.getElementById('preview-' + formId);
+            previewSection.style.display = 'block';
+            
+            previewSection.querySelector('.preview-subject').innerHTML = `<strong>Chủ đề:</strong> ${escapeHtml(data.subject)}`;
+            previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${data.body.replace(/\n/g, '<br>')}</div>`;
+            
+            // Store in hidden fields
+            form.querySelector('input[name="subject"]').value = data.subject;
+            form.querySelector('input[name="body"]').value = data.body;
+            
+            showNotification('success', 'Đã tạo nội dung email! Kiểm tra và gửi.');
+        } else {
+            showNotification('error', data.message || 'Không thể tạo nội dung email');
+        }
+    } catch (error) {
+        console.error('Error generating email:', error);
+        showNotification('error', 'Lỗi kết nối, vui lòng thử lại');
+    } finally {
+        previewBtn.innerHTML = originalHTML;
+        previewBtn.disabled = false;
+    }
+}
+
+function editEmailPreview(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const subject = form.querySelector('input[name="subject"]').value;
+    const body = form.querySelector('input[name="body"]').value;
+    
+    // Create edit modal
+    const modal = document.createElement('div');
+    modal.className = 'email-edit-modal';
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="this.parentElement.remove()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fas fa-edit"></i> Chỉnh sửa Email</h3>
+                <button class="btn-close" onclick="this.closest('.email-edit-modal').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Chủ đề</label>
+                    <input type="text" id="edit-subject-${formId}" value="${escapeHtml(subject)}">
+                </div>
+                <div class="form-group">
+                    <label>Nội dung</label>
+                    <textarea id="edit-body-${formId}" rows="10">${escapeHtml(body)}</textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.email-edit-modal').remove()">
+                    <i class="fas fa-times"></i> Hủy
+                </button>
+                <button class="btn btn-primary" onclick="saveEmailEdit('${formId}')">
+                    <i class="fas fa-save"></i> Lưu thay đổi
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function saveEmailEdit(formId) {
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const newSubject = document.getElementById('edit-subject-' + formId).value;
+    const newBody = document.getElementById('edit-body-' + formId).value;
+    
+    // Update hidden fields
+    form.querySelector('input[name="subject"]').value = newSubject;
+    form.querySelector('input[name="body"]').value = newBody;
+    
+    // Update preview
+    const previewSection = document.getElementById('preview-' + formId);
+    previewSection.querySelector('.preview-subject').innerHTML = `<strong>Chủ đề:</strong> ${escapeHtml(newSubject)}`;
+    previewSection.querySelector('.preview-body').innerHTML = `<div class="email-body-preview">${newBody.replace(/\n/g, '<br>')}</div>`;
+    
+    // Close modal
+    document.querySelector('.email-edit-modal').remove();
+    
+    showNotification('success', 'Đã cập nhật nội dung email');
+}
+
+async function sendEmailFromChat(event, formId) {
+    event.preventDefault();
+    
+    const form = document.getElementById(formId);
+    if (!form) return;
+    
+    const toEmail = form.querySelector('input[name="to_email"]').value;
+    const toName = form.querySelector('input[name="to_name"]').value;
+    const purpose = form.querySelector('textarea[name="purpose"]').value;
+    const tone = form.querySelector('select[name="tone"]').value;
+    const language = form.querySelector('select[name="language"]').value;
+    let subject = form.querySelector('input[name="subject"]').value;
+    let body = form.querySelector('input[name="body"]').value;
+    
+    // If no preview was generated, generate content now
+    if (!subject || !body) {
+        await generateEmailPreview(formId);
+        subject = form.querySelector('input[name="subject"]').value;
+        body = form.querySelector('input[name="body"]').value;
+        
+        if (!subject || !body) {
+            showNotification('error', 'Vui lòng tạo nội dung email trước khi gửi');
+            return;
+        }
+    }
+    
+    // Confirm before sending
+    if (!confirm(`Bạn có chắc muốn gửi email đến ${toEmail}?`)) {
+        return;
+    }
+    
+    // Show loading
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalHTML = submitBtn.innerHTML;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang gửi...';
+    submitBtn.disabled = true;
+    
+    try {
+        const response = await fetch('/api/email/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                to_email: toEmail,
+                to_name: toName,
+                subject: subject,
+                body: body,
+                purpose: purpose,
+                tone: tone,
+                language: language
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            // Replace form with success message
+            form.innerHTML = `
+                <div class="email-sent-success">
+                    <i class="fas fa-check-circle"></i>
+                    <h4>Email đã gửi thành công!</h4>
+                    <p>Đến: ${escapeHtml(toEmail)}</p>
+                    <p>Chủ đề: ${escapeHtml(subject)}</p>
+                </div>
+            `;
+            
+            showNotification('success', 'Email đã được gửi thành công!');
+            
+            // Add bot message about success
+            addChatMessage(`✅ Đã gửi email thành công đến **${toEmail}**!`, 'bot');
+            
+            // Refresh stats
+            loadQuickStats();
+        } else {
+            showNotification('error', data.message || 'Không thể gửi email');
+            submitBtn.innerHTML = originalHTML;
+            submitBtn.disabled = false;
+        }
+    } catch (error) {
+        console.error('Error sending email:', error);
+        showNotification('error', 'Lỗi kết nối, vui lòng thử lại');
+        submitBtn.innerHTML = originalHTML;
+        submitBtn.disabled = false;
     }
 }
 

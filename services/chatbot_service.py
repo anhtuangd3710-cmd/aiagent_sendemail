@@ -642,35 +642,31 @@ Phân bố điểm CV:
 - Sử dụng emoji để làm nổi bật thông tin quan trọng
 - Định dạng với bullet points cho dễ đọc
 
+=== TÍNH NĂNG GỬI EMAIL ===
+Bạn có thể giúp người dùng soạn và gửi email. Khi người dùng muốn gửi email:
+1. Hỏi các thông tin cần thiết: Email người nhận, Tên người nhận, Mục đích/Nội dung email
+2. Khi đã có đủ thông tin, hiện form gửi email với show_email_form=true
+
 === QUAN TRỌNG: PHÂN TÍCH Ý ĐỊNH ===
 Sau khi trả lời, hãy thêm một dòng ở cuối response với format:
-[INTENT: chart_type=<loại_chart_hoặc_none>, show_chart=<true/false>, show_export=<true/false>]
+[INTENT: chart_type=<loại>, show_chart=<true/false>, show_export=<true/false>, show_email_form=<true/false>, email_data=<json_hoặc_none>]
 
-Trong đó chart_type có thể là:
-- "pie" (biểu đồ tròn): cho cảm xúc, phần trăm, tỷ lệ
-- "bar" (biểu đồ cột): cho so sánh, top người nhận, hoạt động user
-- "line" (biểu đồ đường): cho xu hướng theo thời gian
-- "doughnut" (biểu đồ vòng): cho trạng thái email (đã phản hồi/chờ)
-- "radar" (biểu đồ radar): cho tổng quan hiệu suất
-- "polarArea": cho phân tích quyết định
-- "cv" (biểu đồ CV): cho phân bố điểm CV
-- "cv_qualified": cho tỷ lệ ứng viên đạt
-- "user_stats": cho phân bổ người dùng (admin)
-- "user_activity": cho hoạt động chi tiết của users (admin)
+Các chart_type có thể là:
+- "pie", "bar", "horizontalBar", "line", "doughnut", "radar", "polarArea"
+- "cv", "cv_qualified", "user_stats", "user_activity"
+- "table_email", "table_cv", "table_users", "stats_cards", "progress", "comparison"
 - "none": không cần biểu đồ
 
-Hãy THÔNG MINH để quyết định có nên hiện biểu đồ hay không dựa trên:
-- Người dùng có HỎI về số liệu, thống kê, so sánh không?
-- Câu hỏi có liên quan đến data visualization không?
-- Người dùng có đề cập đến biểu đồ, chart, vẽ, xem không?
-- Nội dung có phù hợp để visualize không?
+Khi người dùng muốn GỬI EMAIL:
+- show_email_form=true
+- email_data chứa thông tin: {{"to_email": "...", "to_name": "...", "purpose": "...", "tone": "formal/friendly/casual", "language": "vi/en"}}
 
 Ví dụ:
-- "Cho tôi xem thống kê email" → [INTENT: chart_type=doughnut, show_chart=true, show_export=false]
-- "Ai gửi email nhiều nhất?" → [INTENT: chart_type=user_activity, show_chart=true, show_export=false]
+- "Gửi email cho abc@gmail.com về việc họp" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=true, email_data={{"to_email":"abc@gmail.com","purpose":"mời họp","tone":"formal","language":"vi"}}]
+- "Tôi muốn gửi email" → Hỏi thêm thông tin rồi [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, email_data=none]
+- "Thống kê email" → [INTENT: chart_type=stats_cards, show_chart=true, show_export=false, show_email_form=false, email_data=none]
+- "Ai gửi email nhiều nhất?" → [INTENT: chart_type=horizontalBar, show_chart=true, show_export=false]
 - "Hướng dẫn cài đặt Gmail" → [INTENT: chart_type=none, show_chart=false, show_export=false]
-- "Xuất dữ liệu ra Excel" → [INTENT: chart_type=none, show_chart=false, show_export=true]
-- "So sánh tỷ lệ phản hồi" → [INTENT: chart_type=pie, show_chart=true, show_export=false]
 """
             
             # Generate AI response with intent analysis
@@ -698,6 +694,8 @@ Ví dụ:
                 'is_admin': is_admin,
                 'show_chart': intent['show_chart'],
                 'show_export': intent['show_export'],
+                'show_email_form': intent.get('show_email_form', False),
+                'email_data': intent.get('email_data'),
                 'chart_type': intent['chart_type'],
                 'chart_data': chart_data,
                 'session_id': session_id,
@@ -708,7 +706,9 @@ Ví dụ:
             self.database.save_chat_message(
                 session_id, user_id, 'bot', clean_response,
                 has_chart=intent['show_chart'], chart_type=intent['chart_type'],
-                chart_data=chart_data, has_export=intent['show_export']
+                chart_data=chart_data, has_export=intent['show_export'],
+                has_email_form=intent.get('show_email_form', False),
+                email_data=intent.get('email_data')
             )
             
             # Update session title if this is the first message
@@ -727,27 +727,60 @@ Ví dụ:
     def _parse_ai_intent(self, response: str) -> Dict:
         """Parse AI intent from response"""
         import re
+        import json
         
         default_intent = {
             'chart_type': 'none',
             'show_chart': False,
-            'show_export': False
+            'show_export': False,
+            'show_email_form': False,
+            'email_data': None
         }
         
         try:
-            # Find intent line
-            intent_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\]]+)\]', response)
+            # Find intent line - updated pattern for new format with email
+            intent_match = re.search(
+                r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^,]+),\s*show_email_form=([^,]+),\s*email_data=([^\]]+)\]', 
+                response
+            )
             
             if intent_match:
                 chart_type = intent_match.group(1).strip().lower()
                 show_chart = intent_match.group(2).strip().lower() == 'true'
                 show_export = intent_match.group(3).strip().lower() == 'true'
+                show_email_form = intent_match.group(4).strip().lower() == 'true'
+                email_data_str = intent_match.group(5).strip()
+                
+                # Parse email_data JSON
+                email_data = None
+                if email_data_str and email_data_str.lower() != 'none':
+                    try:
+                        email_data = json.loads(email_data_str)
+                    except:
+                        email_data = None
                 
                 return {
                     'chart_type': chart_type if chart_type != 'none' else 'none',
                     'show_chart': show_chart,
-                    'show_export': show_export
+                    'show_export': show_export,
+                    'show_email_form': show_email_form,
+                    'email_data': email_data
                 }
+            else:
+                # Try old format for backward compatibility
+                old_match = re.search(r'\[INTENT:\s*chart_type=([^,]+),\s*show_chart=([^,]+),\s*show_export=([^\]]+)\]', response)
+                if old_match:
+                    chart_type = old_match.group(1).strip().lower()
+                    show_chart = old_match.group(2).strip().lower() == 'true'
+                    show_export = old_match.group(3).strip().lower() == 'true'
+                    
+                    return {
+                        'chart_type': chart_type if chart_type != 'none' else 'none',
+                        'show_chart': show_chart,
+                        'show_export': show_export,
+                        'show_email_form': False,
+                        'email_data': None
+                    }
         except Exception as e:
             logger.error(f"Error parsing AI intent: {e}")
         
@@ -1272,6 +1305,188 @@ Tôi có thể giúp gì thêm cho bạn?"""
                     'pointHoverBackgroundColor': '#fff',
                     'pointHoverBorderColor': '#6366f1'
                 }]
+            }
+        
+        elif chart_type == 'horizontalBar':
+            # Horizontal bar for ranking
+            top_recipients = email_stats.get('top_recipients', [])[:8]
+            return {
+                'type': 'horizontalBar',
+                'title': '🏆 Xếp hạng người nhận email',
+                'labels': [r.get('name', r.get('email', '?'))[:20] for r in top_recipients] or ['Chưa có dữ liệu'],
+                'datasets': [{
+                    'label': 'Số email',
+                    'data': [r.get('count', 0) for r in top_recipients] or [0],
+                    'backgroundColor': [
+                        '#6366f1', '#8b5cf6', '#a855f7', '#d946ef',
+                        '#ec4899', '#f43f5e', '#f97316', '#eab308'
+                    ][:len(top_recipients) or 1]
+                }]
+            }
+        
+        elif chart_type == 'stats_cards':
+            # Stats cards - special type for card display
+            return {
+                'type': 'stats_cards',
+                'title': '📊 Tổng quan thống kê',
+                'cards': [
+                    {
+                        'icon': '📧',
+                        'label': 'Email đã gửi',
+                        'value': email_stats.get('total_sent', 0),
+                        'color': '#6366f1',
+                        'trend': f"+{email_stats.get('responded', 0)} phản hồi"
+                    },
+                    {
+                        'icon': '✅',
+                        'label': 'Đã phản hồi',
+                        'value': email_stats.get('responded', 0),
+                        'color': '#10b981',
+                        'percent': email_stats.get('response_rate', 0)
+                    },
+                    {
+                        'icon': '⏳',
+                        'label': 'Chờ phản hồi',
+                        'value': email_stats.get('pending', 0),
+                        'color': '#f59e0b'
+                    },
+                    {
+                        'icon': '📋',
+                        'label': 'CV đã đánh giá',
+                        'value': cv_stats.get('total', 0),
+                        'color': '#8b5cf6',
+                        'trend': f"{cv_stats.get('qualified', 0)} đạt yêu cầu"
+                    }
+                ]
+            }
+        
+        elif chart_type == 'progress':
+            # Progress bars
+            total_sent = email_stats.get('total_sent', 0) or 1
+            total_cv = cv_stats.get('total', 0) or 1
+            return {
+                'type': 'progress',
+                'title': '📈 Tiến độ hoạt động',
+                'items': [
+                    {
+                        'label': 'Tỷ lệ phản hồi email',
+                        'value': email_stats.get('responded', 0),
+                        'max': total_sent,
+                        'percent': round(email_stats.get('response_rate', 0), 1),
+                        'color': '#10b981'
+                    },
+                    {
+                        'label': 'Phản hồi tích cực',
+                        'value': email_stats.get('sentiments', {}).get('positive', 0),
+                        'max': email_stats.get('responded', 0) or 1,
+                        'percent': round((email_stats.get('sentiments', {}).get('positive', 0) / max(email_stats.get('responded', 1), 1)) * 100, 1),
+                        'color': '#6366f1'
+                    },
+                    {
+                        'label': 'CV đạt yêu cầu',
+                        'value': cv_stats.get('qualified', 0),
+                        'max': total_cv,
+                        'percent': round(cv_stats.get('qualification_rate', 0), 1),
+                        'color': '#8b5cf6'
+                    },
+                    {
+                        'label': 'Email mời phỏng vấn',
+                        'value': cv_stats.get('emails_sent', 0),
+                        'max': cv_stats.get('qualified', 0) or 1,
+                        'percent': round((cv_stats.get('emails_sent', 0) / max(cv_stats.get('qualified', 1), 1)) * 100, 1),
+                        'color': '#f59e0b'
+                    }
+                ]
+            }
+        
+        elif chart_type == 'table_email':
+            # Email comparison table
+            top_recipients = email_stats.get('top_recipients', [])[:10]
+            return {
+                'type': 'table',
+                'title': '📊 Bảng thống kê email theo người nhận',
+                'headers': ['#', 'Người nhận', 'Đã gửi', 'Phản hồi', 'Tỷ lệ'],
+                'rows': [
+                    [
+                        i + 1,
+                        r.get('name', r.get('email', '?'))[:25],
+                        r.get('count', 0),
+                        r.get('responded', 0),
+                        f"{round((r.get('responded', 0) / max(r.get('count', 1), 1)) * 100)}%"
+                    ] for i, r in enumerate(top_recipients)
+                ] or [['', 'Chưa có dữ liệu', '', '', '']]
+            }
+        
+        elif chart_type == 'table_cv':
+            # CV score table
+            score_dist = cv_stats.get('score_distribution', {})
+            return {
+                'type': 'table',
+                'title': '📋 Bảng phân bố điểm CV',
+                'headers': ['Khoảng điểm', 'Số lượng', 'Đánh giá', 'Tỷ lệ'],
+                'rows': [
+                    ['0-50%', score_dist.get('0-50', 0), '❌ Chưa đạt', f"{round(score_dist.get('0-50', 0) / max(cv_stats.get('total', 1), 1) * 100)}%"],
+                    ['51-70%', score_dist.get('51-70', 0), '⚠️ Trung bình', f"{round(score_dist.get('51-70', 0) / max(cv_stats.get('total', 1), 1) * 100)}%"],
+                    ['71-84%', score_dist.get('71-84', 0), '✅ Khá', f"{round(score_dist.get('71-84', 0) / max(cv_stats.get('total', 1), 1) * 100)}%"],
+                    ['85-100%', score_dist.get('85-100', 0), '🌟 Xuất sắc', f"{round(score_dist.get('85-100', 0) / max(cv_stats.get('total', 1), 1) * 100)}%"]
+                ]
+            }
+        
+        elif chart_type == 'table_users':
+            # Users table (admin only)
+            if is_admin:
+                user_stats = self._get_user_statistics_admin()
+                top_users = user_stats.get('top_active_users', [])[:10]
+                return {
+                    'type': 'table',
+                    'title': '👥 Bảng hoạt động người dùng',
+                    'headers': ['#', 'Tên', 'Vai trò', 'Email gửi', 'CV đánh giá', 'Tổng'],
+                    'rows': [
+                        [
+                            i + 1,
+                            u.get('name', '?')[:20],
+                            '👑 Admin' if u.get('role') == 'admin' else '👤 User',
+                            u.get('email_count', 0),
+                            u.get('cv_count', 0),
+                            u.get('total_activity', 0)
+                        ] for i, u in enumerate(top_users)
+                    ] or [['', 'Chưa có dữ liệu', '', '', '', '']]
+                }
+            else:
+                return {
+                    'type': 'table',
+                    'title': '⚠️ Không có quyền',
+                    'headers': ['Thông báo'],
+                    'rows': [['Bạn cần quyền Admin để xem']]
+                }
+        
+        elif chart_type == 'comparison':
+            # Comparison view
+            return {
+                'type': 'comparison',
+                'title': '⚖️ So sánh Email vs CV',
+                'items': [
+                    {
+                        'label': 'Email',
+                        'icon': '📧',
+                        'stats': [
+                            {'name': 'Tổng số', 'value': email_stats.get('total_sent', 0)},
+                            {'name': 'Thành công', 'value': email_stats.get('responded', 0)},
+                            {'name': 'Tỷ lệ', 'value': f"{email_stats.get('response_rate', 0)}%"}
+                        ],
+                        'color': '#6366f1'
+                    },
+                    {
+                        'label': 'CV',
+                        'icon': '📋',
+                        'stats': [
+                            {'name': 'Tổng số', 'value': cv_stats.get('total', 0)},
+                            {'name': 'Đạt yêu cầu', 'value': cv_stats.get('qualified', 0)},
+                            {'name': 'Tỷ lệ', 'value': f"{cv_stats.get('qualification_rate', 0)}%"}
+                        ],
+                        'color': '#10b981'
+                    }
+                ]
             }
         
         else:  # overview - email status doughnut
