@@ -1189,6 +1189,38 @@ Set: show_email_status=true, email_id=<id>
                     'email_id': None,
                     'email_data': None
                 }
+            
+            # Try raw format without [INTENT:] wrapper (AI sometimes outputs this way)
+            # Pattern: chart_type=none, show_chart=false, show_export=true, ...
+            raw_match = re.search(
+                r'chart_type\s*=\s*(\w+)\s*,\s*show_chart\s*=\s*(\w+)\s*,\s*show_export\s*=\s*(\w+)\s*,\s*show_email_form\s*=\s*(\w+)\s*,\s*show_email_status\s*=\s*(\w+)\s*,\s*email_id\s*=\s*(\w+)',
+                response, re.IGNORECASE
+            )
+            if raw_match:
+                chart_type = raw_match.group(1).strip().lower()
+                show_chart = raw_match.group(2).strip().lower() == 'true'
+                show_export = raw_match.group(3).strip().lower() == 'true'
+                show_email_form = raw_match.group(4).strip().lower() == 'true'
+                show_email_status = raw_match.group(5).strip().lower() == 'true'
+                email_id_str = raw_match.group(6).strip()
+                
+                email_id = None
+                if email_id_str and email_id_str.lower() != 'none':
+                    try:
+                        email_id = int(email_id_str)
+                    except:
+                        email_id = None
+                
+                return {
+                    'chart_type': chart_type if chart_type != 'none' else 'none',
+                    'show_chart': show_chart,
+                    'show_export': show_export,
+                    'show_email_form': show_email_form,
+                    'show_email_status': show_email_status,
+                    'email_id': email_id,
+                    'email_data': None
+                }
+                
         except Exception as e:
             logger.error(f"Error parsing AI intent: {e}")
         
@@ -1208,6 +1240,13 @@ Set: show_email_status=true, email_id=<id>
         cleaned = re.sub(r'\[SQL:\s*[^\]]+\]', '', cleaned)
         # Remove any remaining INTENT text that might be visible
         cleaned = re.sub(r'INTENT\s*:', '', cleaned, flags=re.IGNORECASE)
+        
+        # Remove the entire line containing chart_type=, show_chart=, etc (the raw INTENT line without brackets)
+        cleaned = re.sub(r'^.*chart_type\s*=.*$', '', cleaned, flags=re.MULTILINE | re.IGNORECASE)
+        cleaned = re.sub(r'^.*show_chart\s*=.*show_export\s*=.*$', '', cleaned, flags=re.MULTILINE | re.IGNORECASE)
+        
+        # Remove empty brackets that might remain
+        cleaned = re.sub(r'\[\s*\]', '', cleaned)
         # Clean up extra whitespace
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned.strip()
