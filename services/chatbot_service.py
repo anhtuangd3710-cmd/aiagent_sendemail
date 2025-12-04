@@ -961,10 +961,13 @@ KHÔNG dùng khi: User chỉ hỏi số liệu mà không đề cập biểu đ�
 Set: show_chart=true, chart_type=<loại>
 Loại: pie, bar, line, doughnut, stats_cards, progress, table_email, table_cv
 
-**TOOL 3: XUẤT EXCEL** (Export)
-Dùng khi: User YÊU CẦU TRỰC TIẾP "xuất excel", "export", "tải file"
-KHÔNG dùng khi: User chỉ xem thống kê
-Set: show_export=true
+**TOOL 3: XUẤT EXCEL** (Export Data)
+Dùng khi: User YÊU CẦU xuất/tải dữ liệu ra file
+Từ khóa nhận biết: "xuất excel", "xuất file", "export", "tải file", "download", "lưu ra file", "xuất dữ liệu"
+PHẢI set: show_export=true
+Ví dụ: "xuất excel đi" → show_export=true
+       "tải dữ liệu" → show_export=true
+       "export ra file" → show_export=true
 
 **TOOL 4: GỬI EMAIL** (Email Form)
 Dùng khi: User YÊU CẦU "gửi email", "soạn mail", "viết email cho..."
@@ -993,10 +996,15 @@ Set: show_email_status=true, email_id=<id>
 === YÊU CẦU TRẢ LỜI ===
 1. PHÂN TÍCH ý định chính của câu hỏi
 2. CHỌN tool PHÙ HỢP NHẤT (hoặc không dùng tool nào)
-3. Trả lời ngắn gọn, thân thiện
-4. Cuối response PHẢI có dòng INTENT:
+3. Trả lời ngắn gọn, thân thiện bằng tiếng Việt
+4. QUAN TRỌNG: Cuối response BẮT BUỘC phải có dòng INTENT (sẽ bị ẩn đi khi hiển thị)
 
 [INTENT: chart_type=<loại|none>, show_chart=<true/false>, show_export=<true/false>, show_email_form=<true/false>, show_email_status=<true/false>, email_id=<id|none>, email_data=<json|none>]
+
+**VÍ DỤ CỤ THỂ:**
+- "xuất excel" → [INTENT: chart_type=none, show_chart=false, show_export=true, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
+- "vẽ biểu đồ" → [INTENT: chart_type=pie, show_chart=true, show_export=false, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
+- "có bao nhiêu email" → [INTENT: chart_type=none, show_chart=false, show_export=false, show_email_form=false, show_email_status=false, email_id=none, email_data=none]
 
 **Ví dụ mapping:**
 - "Có bao nhiêu email?" → Trả lời từ thống kê, KHÔNG chart → show_chart=false
@@ -1189,12 +1197,17 @@ Set: show_email_status=true, email_id=<id>
     def _clean_response(self, response: str) -> str:
         """Remove intent line and SQL blocks from response"""
         import re
-        # Remove the intent line
-        cleaned = re.sub(r'\n?\[INTENT:[^\]]+\]', '', response)
+        # Remove the intent line - multiple patterns to catch all variations
+        cleaned = re.sub(r'\n?\[INTENT:[^\]]+\]', '', response, flags=re.IGNORECASE)
+        cleaned = re.sub(r'\[INTENT\s*:[^\]]*\]', '', cleaned, flags=re.IGNORECASE)
+        # Remove any line starting with [INTENT
+        cleaned = re.sub(r'^.*\[INTENT.*$', '', cleaned, flags=re.MULTILINE | re.IGNORECASE)
         # Remove SQL blocks (we'll execute and show results separately)
         cleaned = re.sub(r'```sql[\s\S]*?```', '', cleaned)
         # Remove [SQL:...] inline patterns
         cleaned = re.sub(r'\[SQL:\s*[^\]]+\]', '', cleaned)
+        # Remove any remaining INTENT text that might be visible
+        cleaned = re.sub(r'INTENT\s*:', '', cleaned, flags=re.IGNORECASE)
         # Clean up extra whitespace
         cleaned = re.sub(r'\n{3,}', '\n\n', cleaned)
         return cleaned.strip()
